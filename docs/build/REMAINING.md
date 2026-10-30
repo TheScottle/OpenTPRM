@@ -4,6 +4,20 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 **Progress snapshot (this branch):** Gap close: **exception list/approve HTML UI**; **OIDC authorization-code+PKCE client vs fake IdP httptest** + Keycloak handbook notes; **pdfcpu re-evaluated (Apache-2.0, CGO-free) — keep marked ZIP** (ADR-0004); **admin keys/backups HTML stubs** + **/me agent-grants revoke UI**; **portal rate limit + honeypot**; **broader NFR concurrent /health/ready + authenticated /me smoke**. Prior: answer-library UI; committee marked ZIP; Sterling & Vance demo graph; WebAuthn COSE; OpenAPI §10.2 expansion.
 
+## Recovered WIP (`cursor/opentprm-recover-wip-ebfc`)
+
+Parallel-agent / finish-gaps uncommitted work was collected from `cursor/opentprm-unraid-ebfc` WIP plus `stash@{0}` (foreign-wip-parallel-agent) and `stash@{1}` (wip-other-agent-templates). Content landed on main (Unraid pack under `deploy/unraid/` kept intact). Stashes were **not** dropped.
+
+| Item | Landed | Still open |
+| --- | --- | --- |
+| Agent grants list/revoke API + HTML | yes | — |
+| Exceptions / admin keys+backups HTML + nav | yes | admin action APIs beyond stubs |
+| Portal `RateLimiter` + login honeypot | yes | broader anti-automation / ZAP |
+| OIDC auth-code+PKCE client + fake-IdP unit + handbook | yes | HTTP `/auth/oidc/*` → session bridge |
+| SQLite XTS hexkey on every pool conn + `MaxOpenConns(1)` | yes | — |
+| NFR concurrent ready + auth smoke | yes | vegeta/k6 |
+| ADR-0004 pdfcpu re-eval; marked ZIP retained | yes | slim PDF pack if size budget allows |
+
 ## M0 — Secure skeleton (auth essentials still open)
 
 **Done (foundation):** sealed start + keyring, TLS listeners, Cedar PDP, hash-chained audit, Dockerfile/compose scaffold, AT-10/AT-11/SEC-CTN-006/SEC-AZ-004 harnesses; session/CSRF/OIDC-claim/bootstrap/break-glass unit layers; **OIDC auth-code+PKCE client against fake IdP** (`TestSEC_AN_001_OIDCAuthCodePKCEAgainstFakeIdP`) + Keycloak config notes in handbook; WebAuthn enroll/login/step-up with **COSE key metadata + webauthncose verify** (full CTAP attestation UI still open); production config refusals (TLS, master key, allow_dev_headers); **OPS-004 demo seed refuse** + **richer Sterling & Vance graph (dev-only)**.
