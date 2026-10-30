@@ -2,7 +2,7 @@
 // Agents never approve, finalize, or administer (SOD-4 / IAM).
 forbid (
   principal is Agent,
-  action in [Action::"risk:approve", Action::"exception:approve",
+  action in [Action::"risk:approve", Action::"exception:approve", Action::"change_request:approve",
              Action::"assessment:finalize", Action::"admin:any",
              Action::"identity:manage", Action::"policy:manage", Action::"export:bulk"],
   resource
@@ -41,7 +41,8 @@ when { principal.roles.contains("risk_analyst") || principal.roles.contains("tpr
 
 permit (
   principal is User,
-  action in [Action::"risk:approve", Action::"exception:approve", Action::"assessment:finalize"],
+  action in [Action::"risk:approve", Action::"exception:approve", Action::"change_request:approve",
+             Action::"assessment:finalize"],
   resource
 )
 when { principal.roles.contains("approver") && context has aal && context.aal >= 2 };

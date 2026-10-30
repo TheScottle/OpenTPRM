@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TheScottle/OpenTPRM/internal/ai"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
 	"github.com/TheScottle/OpenTPRM/internal/domain/assessment"
 	"github.com/TheScottle/OpenTPRM/internal/domain/evidence"
@@ -1362,6 +1364,34 @@ func (a *App) handleSuggestions(w http.ResponseWriter, r *http.Request, ac authz
 }
 
 func (a *App) handleChangeRequests(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.HasSuffix(path, ":approve") || strings.HasSuffix(path, ":reject") {
+		decision := "approved"
+		suffix := ":approve"
+		if strings.HasSuffix(path, ":reject") {
+			decision = "rejected"
+			suffix = ":reject"
+		}
+		id := extractID(r.URL.Path, "/api/v1/change-requests/", suffix)
+		if r.Method != http.MethodPost {
+			writeProblem(w, 405, "method_not_allowed", "POST required")
+			return
+		}
+		if !ac.StepUpFresh() {
+			writeProblem(w, 401, "step_up_required", "change-request decision requires WebAuthn step-up")
+			return
+		}
+		if !a.authorize(w, ac, authz.ActionChangeRequestApprove, authz.Resource{Type: "change_request", ID: id}) {
+			return
+		}
+		got, err := a.Store.DecideChangeRequest(r.Context(), id, decision, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "decide_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "change_request", ID: "*"}) {
@@ -1436,6 +1466,47 @@ func (a *App) handleModels(w http.ResponseWriter, r *http.Request, ac authz.Cont
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
 	isEndpoints := strings.HasPrefix(path, "/model-endpoints")
+	if isEndpoints {
+		rest := strings.TrimPrefix(path, "/model-endpoints")
+		rest = strings.TrimPrefix(rest, "/")
+		if rest != "" && !strings.Contains(rest, "/") {
+			id := rest
+			switch r.Method {
+			case http.MethodGet:
+				got, err := a.Store.GetModelEndpoint(r.Context(), id)
+				if err != nil {
+					writeProblem(w, 404, "not_found", "model endpoint not found")
+					return
+				}
+				writeJSON(w, 200, got)
+				return
+			case http.MethodPatch, http.MethodPut:
+				var body store.ModelEndpoint
+				if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+					writeProblem(w, 400, "bad_request", "invalid json")
+					return
+				}
+				body.ID = id
+				got, err := a.Store.UpdateModelEndpoint(r.Context(), body)
+				if err != nil {
+					writeProblem(w, 422, "update_failed", err.Error())
+					return
+				}
+				writeJSON(w, 200, got)
+				return
+			case http.MethodDelete:
+				if err := a.Store.DeleteModelEndpoint(r.Context(), id); err != nil {
+					writeProblem(w, 404, "not_found", err.Error())
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+				return
+			default:
+				writeProblem(w, 405, "method_not_allowed", "method not allowed")
+				return
+			}
+		}
+	}
 	switch r.Method {
 	case http.MethodGet:
 		if isEndpoints {
@@ -1537,6 +1608,53 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request, ac authz.Conte
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+type storeSuggestionWriter struct {
+	app *App
+	ac  authz.Context
+}
+
+func (w storeSuggestionWriter) CreateSuggestion(ctx context.Context, kind string, payload json.RawMessage, citations []ai.Citation, classification string) (ai.Suggestion, error) {
+	cit, _ := json.Marshal(citations)
+	got, err := w.app.Store.CreateSuggestion(ctx, store.Suggestion{
+		Kind: kind, PayloadJSON: string(payload), CitationsJSON: string(cit),
+		Classification: classification, DelegatorID: w.ac.PrincipalID, Status: "proposed",
+	})
+	if err != nil {
+		return ai.Suggestion{}, err
+	}
+	return ai.Suggestion{
+		ID: got.ID, Kind: got.Kind, Payload: json.RawMessage(got.PayloadJSON),
+		Status: got.Status, Label: "AI suggestion — human review required",
+	}, nil
+}
+
+func (a *App) handleAIJobs(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	if r.Method != http.MethodPost {
+		writeProblem(w, 405, "method_not_allowed", "POST required")
+		return
+	}
+	if !a.authorize(w, ac, authz.ActionSuggest, authz.Resource{Type: "suggestion", ID: "*"}) {
+		return
+	}
+	var body ai.JobRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		writeProblem(w, 400, "bad_request", "invalid json")
+		return
+	}
+	res, err := ai.RunSuggestJob(r.Context(), a.Cfg.AIAssist.Enabled, storeSuggestionWriter{app: a, ac: ac}, body)
+	if err != nil {
+		status := 422
+		if errors.Is(err, ai.ErrAssistDisabled) {
+			status = 503
+		} else if errors.Is(err, ai.ErrJobNotSuggestOnly) {
+			status = 403
+		}
+		writeProblem(w, status, "ai_job_failed", err.Error())
+		return
+	}
+	writeJSON(w, 201, res)
 }
 
 func extractID(path, prefix, suffix string) string {

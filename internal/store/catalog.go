@@ -323,6 +323,48 @@ func (s *Store) ListChangeRequests(ctx context.Context) ([]ChangeRequest, error)
 	return out, rows.Err()
 }
 
+// GetChangeRequest loads one change request.
+func (s *Store) GetChangeRequest(ctx context.Context, id string) (ChangeRequest, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return ChangeRequest{}, err
+	}
+	var cr ChangeRequest
+	err := s.db.QueryRowContext(ctx, `SELECT id, action, target_type, target_id, patch_json, patch_sha256, target_etag, rationale, citations_json, status, agent_client_id, delegator_id, created_at
+		FROM change_requests WHERE id=?`, id).
+		Scan(&cr.ID, &cr.Action, &cr.TargetType, &cr.TargetID, &cr.PatchJSON, &cr.PatchSHA256, &cr.TargetETag, &cr.Rationale, &cr.CitationsJSON, &cr.Status, &cr.AgentClientID, &cr.DelegatorID, &cr.CreatedAt)
+	return cr, err
+}
+
+// DecideChangeRequest approves or rejects a pending change request (humans only; SOD vs requester).
+func (s *Store) DecideChangeRequest(ctx context.Context, id, decision, actor string) (ChangeRequest, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return ChangeRequest{}, err
+	}
+	cr, err := s.GetChangeRequest(ctx, id)
+	if err != nil {
+		return ChangeRequest{}, err
+	}
+	if cr.Status != "pending_approval" {
+		return ChangeRequest{}, fmt.Errorf("change request not pending")
+	}
+	if cr.DelegatorID != "" && cr.DelegatorID == actor {
+		return ChangeRequest{}, fmt.Errorf("SOD: requester cannot decide own change request")
+	}
+	switch decision {
+	case "approved", "rejected":
+	default:
+		return ChangeRequest{}, fmt.Errorf("decision must be approved or rejected")
+	}
+	now := nowUTC()
+	_, err = s.db.ExecContext(ctx, `UPDATE change_requests SET status=?, decided_by=?, decided_at=? WHERE id=?`,
+		decision, actor, now, id)
+	if err != nil {
+		return ChangeRequest{}, err
+	}
+	cr.Status = decision
+	return cr, nil
+}
+
 // CreateAgentClient inserts an agent client.
 func (s *Store) CreateAgentClient(ctx context.Context, c AgentClient) (AgentClient, error) {
 	if _, err := RequireAuthz(ctx); err != nil {
@@ -429,6 +471,81 @@ func (s *Store) ListModelEndpoints(ctx context.Context) ([]ModelEndpoint, error)
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// GetModelEndpoint loads one model endpoint.
+func (s *Store) GetModelEndpoint(ctx context.Context, id string) (ModelEndpoint, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return ModelEndpoint{}, err
+	}
+	var m ModelEndpoint
+	var local, approved int
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, base_url, api_style, model_name, local_flag, max_classification, approved, created_by, created_at
+		FROM model_endpoints WHERE id=?`, id).
+		Scan(&m.ID, &m.Name, &m.BaseURL, &m.APIStyle, &m.ModelName, &local, &m.MaxClassification, &approved, &m.CreatedBy, &m.CreatedAt)
+	if err != nil {
+		return ModelEndpoint{}, err
+	}
+	m.LocalFlag = local != 0
+	m.Approved = approved != 0
+	return m, nil
+}
+
+// UpdateModelEndpoint updates mutable fields on a model endpoint.
+func (s *Store) UpdateModelEndpoint(ctx context.Context, m ModelEndpoint) (ModelEndpoint, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return ModelEndpoint{}, err
+	}
+	if m.ID == "" {
+		return ModelEndpoint{}, fmt.Errorf("id required")
+	}
+	cur, err := s.GetModelEndpoint(ctx, m.ID)
+	if err != nil {
+		return ModelEndpoint{}, err
+	}
+	if m.Name != "" {
+		cur.Name = m.Name
+	}
+	if m.BaseURL != "" {
+		cur.BaseURL = m.BaseURL
+	}
+	if m.APIStyle != "" {
+		cur.APIStyle = m.APIStyle
+	}
+	if m.ModelName != "" {
+		cur.ModelName = m.ModelName
+	}
+	if m.MaxClassification != "" {
+		cur.MaxClassification = m.MaxClassification
+	}
+	cur.LocalFlag = m.LocalFlag
+	cur.Approved = m.Approved
+	local, approved := 0, 0
+	if cur.LocalFlag {
+		local = 1
+	}
+	if cur.Approved {
+		approved = 1
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE model_endpoints SET name=?, base_url=?, api_style=?, model_name=?, local_flag=?, max_classification=?, approved=? WHERE id=?`,
+		cur.Name, cur.BaseURL, cur.APIStyle, cur.ModelName, local, cur.MaxClassification, approved, cur.ID)
+	return cur, err
+}
+
+// DeleteModelEndpoint removes a model endpoint registry row.
+func (s *Store) DeleteModelEndpoint(ctx context.Context, id string) error {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM model_endpoints WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("model endpoint not found")
+	}
+	return nil
 }
 
 // CreateModel inserts a model registry row.

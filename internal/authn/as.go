@@ -48,13 +48,19 @@ type StoredToken struct {
 }
 
 // AuthorizationServer issues and verifies opaque, hashed access tokens (M6 / AI-023).
-// Full fosite/PKCE/mTLS remain open; this covers issue/verify + DPoP header presence.
+// PKCE + auth codes for pre-registered clients and DPoP proof verify are supported;
+// full fosite/mTLS remain open.
 type AuthorizationServer struct {
 	mu     sync.RWMutex
 	tokens map[string]StoredToken
 	TTL    time.Duration
 	// RequireSenderConstraint refuses Authorization without a DPoP proof header (AI-023).
 	RequireSenderConstraint bool
+	Clients                 *ClientRegistry
+	Codes                   *AuthCodeStore
+	DPoPNonces              *DPoPNonceStore
+	// VerifyDPoPProof when true runs ParseAndVerifyDPoP instead of header-presence stub.
+	VerifyDPoPProof bool
 }
 
 // NewAuthorizationServer constructs an in-memory AS token store.
@@ -66,6 +72,10 @@ func NewAuthorizationServer(ttl time.Duration, requireSender bool) *Authorizatio
 		tokens:                  map[string]StoredToken{},
 		TTL:                     ttl,
 		RequireSenderConstraint: requireSender,
+		Clients:                 NewClientRegistry(),
+		Codes:                   NewAuthCodeStore(10 * time.Minute),
+		DPoPNonces:              NewDPoPNonceStore(10 * time.Minute),
+		VerifyDPoPProof:         true,
 	}
 }
 
@@ -99,7 +109,7 @@ func (as *AuthorizationServer) IssueOpaqueAccessToken(clientID, userID, audience
 	}, nil
 }
 
-// VerifyOpaqueAccessToken looks up by hash, checks expiry/revocation/audience, and DPoP header presence.
+// VerifyOpaqueAccessToken looks up by hash, checks expiry/revocation/audience, and DPoP.
 func (as *AuthorizationServer) VerifyOpaqueAccessToken(r *http.Request, expectedAudience string) (StoredToken, error) {
 	if as == nil {
 		return StoredToken{}, errors.New("authorization server nil")
@@ -121,9 +131,6 @@ func (as *AuthorizationServer) VerifyOpaqueAccessToken(r *http.Request, expected
 	default:
 		return StoredToken{}, ErrTokenNotFound
 	}
-	if err := CheckDPoPHeaderPresent(r, as.RequireSenderConstraint); err != nil {
-		return StoredToken{}, err
-	}
 	hash := HashToken(raw)
 	as.mu.RLock()
 	st, ok := as.tokens[hash]
@@ -137,7 +144,44 @@ func (as *AuthorizationServer) VerifyOpaqueAccessToken(r *http.Request, expected
 	if expectedAudience != "" && st.Audience != expectedAudience {
 		return StoredToken{}, ErrInvalidAudience
 	}
+	if as.RequireSenderConstraint {
+		if as.VerifyDPoPProof {
+			proof, err := ParseAndVerifyDPoP(r, raw, as.DPoPNonces)
+			if err != nil {
+				return StoredToken{}, err
+			}
+			if st.DPoPThumbprint != "" && st.DPoPThumbprint != proof.Thumbprint {
+				return StoredToken{}, ErrDPoPThumbMismatch
+			}
+		} else if err := CheckDPoPHeaderPresent(r, true); err != nil {
+			return StoredToken{}, err
+		}
+	}
 	return st, nil
+}
+
+// ExtractDPoPThumbprint verifies (or stubs) the DPoP header and returns a thumbprint for token issue.
+func (as *AuthorizationServer) ExtractDPoPThumbprint(r *http.Request) (string, error) {
+	if as == nil {
+		return "", errors.New("authorization server nil")
+	}
+	if !as.RequireSenderConstraint {
+		if dpop := strings.TrimSpace(r.Header.Get("DPoP")); dpop != "" {
+			return HashToken(dpop)[:32], nil
+		}
+		return "", nil
+	}
+	if as.VerifyDPoPProof {
+		proof, err := ParseAndVerifyDPoP(r, "", as.DPoPNonces)
+		if err != nil {
+			return "", err
+		}
+		return proof.Thumbprint, nil
+	}
+	if err := CheckDPoPHeaderPresent(r, true); err != nil {
+		return "", err
+	}
+	return HashToken(r.Header.Get("DPoP"))[:32], nil
 }
 
 // RevokeByHash marks a token revoked.

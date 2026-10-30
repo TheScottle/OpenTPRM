@@ -20,6 +20,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
 	"github.com/TheScottle/OpenTPRM/internal/gateway"
+	"github.com/TheScottle/OpenTPRM/internal/portal"
 	"github.com/TheScottle/OpenTPRM/internal/store"
 	"github.com/TheScottle/OpenTPRM/web"
 )
@@ -167,8 +168,59 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 		if err := a.Templates.ExecuteTemplate(w, "vendors.tmpl", data); err != nil {
 			writeProblem(w, 500, "error", "template render failed")
 		}
+	case r.URL.Path == "/change-requests" || r.URL.Path == "/change-requests/":
+		a.handleChangeRequestUI(w, r, ac)
 	default:
+		if strings.HasPrefix(r.URL.Path, "/change-requests/") {
+			a.handleChangeRequestUI(w, r, ac)
+			return
+		}
 		http.NotFound(w, r)
+	}
+}
+
+func (a *App) handleChangeRequestUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	ctx := authz.WithContext(r.Context(), ac)
+	path := strings.TrimPrefix(r.URL.Path, "/change-requests/")
+	path = strings.Trim(path, "/")
+
+	if r.Method == http.MethodPost && (strings.HasSuffix(path, ":approve") || strings.HasSuffix(path, ":reject")) {
+		decision := "approved"
+		suffix := ":approve"
+		if strings.HasSuffix(path, ":reject") {
+			decision = "rejected"
+			suffix = ":reject"
+		}
+		id := strings.TrimSuffix(path, suffix)
+		if !ac.StepUpFresh() {
+			writeProblem(w, 401, "step_up_required", "change-request decision requires WebAuthn step-up")
+			return
+		}
+		if !a.authorize(w, ac, authz.ActionChangeRequestApprove, authz.Resource{Type: "change_request", ID: id}) {
+			return
+		}
+		if a.Store == nil {
+			writeProblem(w, 503, "unavailable", "store unavailable")
+			return
+		}
+		_, err := a.Store.DecideChangeRequest(ctx, id, decision, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "decide_failed", err.Error())
+			return
+		}
+		http.Redirect(w, r, "/change-requests", http.StatusSeeOther)
+		return
+	}
+
+	var items []store.ChangeRequest
+	if a.Store != nil && ac.Valid() {
+		items, _ = a.Store.ListChangeRequests(ctx)
+	}
+	data := map[string]any{
+		"Title": "Change requests", "User": ac.PrincipalID, "Items": items, "CanApprove": ac.HasRole("approver"),
+	}
+	if err := a.Templates.ExecuteTemplate(w, "change_requests.tmpl", data); err != nil {
+		writeProblem(w, 500, "error", "template render failed")
 	}
 }
 
@@ -227,7 +279,34 @@ func writeProblem(w http.ResponseWriter, status int, typ, detail string) {
 	})
 }
 
-// ListenAndServeTLS starts Listener A.
+// PortalEnabled reports whether Listener B should start.
+func (a *App) PortalEnabled() bool {
+	return a.Cfg.Server.Portal.Enabled || a.Cfg.Portal.Enabled
+}
+
+// NewPortalServer builds Listener B when portal is enabled.
+func (a *App) NewPortalServer() *http.Server {
+	ps := portal.NewServer(true)
+	if a.Store != nil {
+		ps.Store = a.Store
+	}
+	addr := a.Cfg.Server.Portal.Listen
+	if addr == "" {
+		addr = "127.0.0.1:9443"
+	}
+	return &http.Server{
+		Addr:              addr,
+		Handler:           ps.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS13},
+	}
+}
+
+// ListenAndServeTLS starts Listener A (and Listener B when portal.enabled).
 func (a *App) ListenAndServeTLS(ctx context.Context, certFile, keyFile string) error {
 	srv := a.NewServer()
 	ln, err := net.Listen("tcp", srv.Addr)
@@ -240,6 +319,42 @@ func (a *App) ListenAndServeTLS(ctx context.Context, certFile, keyFile string) e
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
+
+	if a.PortalEnabled() {
+		psrv := a.NewPortalServer()
+		pln, err := net.Listen("tcp", psrv.Addr)
+		if err != nil {
+			return fmt.Errorf("portal listen: %w", err)
+		}
+		go func() {
+			<-ctx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = psrv.Shutdown(shutdownCtx)
+		}()
+		go func() {
+			pcert, pkey := a.Cfg.Server.Portal.TLS.CertFile, a.Cfg.Server.Portal.TLS.KeyFile
+			if pcert == "" {
+				pcert, pkey = certFile, keyFile
+			}
+			var perr error
+			if pcert != "" && pkey != "" {
+				perr = psrv.ServeTLS(pln, pcert, pkey)
+			} else {
+				if a.Log != nil {
+					a.Log.Warn("portal serving without TLS (development only)")
+				}
+				perr = psrv.Serve(pln)
+			}
+			if perr != nil && a.Log != nil && ctx.Err() == nil {
+				a.Log.Error("portal server stopped", "err", perr)
+			}
+		}()
+		if a.Log != nil {
+			a.Log.Info("portal listener enabled", "listen", psrv.Addr)
+		}
+	}
+
 	if certFile != "" && keyFile != "" {
 		return srv.ServeTLS(ln, certFile, keyFile)
 	}

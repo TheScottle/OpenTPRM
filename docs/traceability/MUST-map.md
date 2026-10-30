@@ -29,14 +29,19 @@
 | AT-14 / ARC-003 | `TestAT_14_ShredLeavesTombstone`, `TestARC_002_LegalHoldBlocksShred` |
 | GEN-012 / RPT-002 / RPT-004 | `TestGEN_012_ConfigurableMarkings`, `TestRPT_004_SensitiveClassification`, `TestRPT_ExportMarkingsGEN012`, `TestRPT_EXC_ReportsExportsExceptionsHTTP` |
 | EXC-001 / EXC-002 / SOD-2 | `TestEXC_CreateListApprove_SOD2`, `TestRPT_EXC_ReportsExportsExceptionsHTTP`, `TestSignVerifyRoundTrip` |
-| AI-023 | `TestAI_023_OpaqueTokenIssueVerifyHashed`, `TestAI_023_DPoPHeaderPresenceStub`, `TestOAuth_TokenIssueRequiresDPoP` |
+| AI-023 | `TestAI_023_OpaqueTokenIssueVerifyHashed`, `TestAI_023_DPoPHeaderPresenceStub`, `TestAI_023_PKCEChallengeStoreAndAuthCode`, `TestAI_023_DPoPProofParseVerify`, `TestOAuth_TokenIssueRequiresDPoP`, `TestOAuth_PKCEAuthorizeCodeAndToken` |
 | AI-005 | `TestAI_005_TasksExtensionStubs` |
 | AI-032 | `TestAI_032_BudgetWiredOnGateway` |
+| AI model registry | `TestAI_ModelEndpointHTTPCRUD` |
+| AI job suggestions-only | `TestAI_JobStubCreatesSuggestionsOnly` |
 | UI analyst home | `TestUI_AnalystHomeAndVendors` |
+| POR-002 magic-link | `TestPOR_002_MagicLinkIssueConsume` |
+| POR vendor questionnaires | `TestPOR_VendorQuestionnaireListScoped` |
+| Portal listener | `TestPortalEnabledWiresListener` |
 | AT-02 | `TestAT_02_RestrictedRecord404Semantics` |
 | AT-03 | `TestAT_03_NoApproveToolListed` |
 | AT-09 | `TestAT_09_HeaderBodyNameMismatch` |
-| AT-05 / AT-06 | `TestAT_05_*` / `TestAT_06_*` |
+| AT-05 / AT-06 | `TestAT_05_ChangeRequestApprovalUI` / `TestAT_06_*` (dual-control still open) |
 | AT-13 / GEN-014 | `TestAT_13_*` / `TestGEN_014_*` |
 | AT-12 | `TestAT_12_DisabledConnectorBlocked` |
 | AT-04 | `TestAT_04_InjectionNotObeyed` + evidence detectors |

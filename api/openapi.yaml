@@ -653,6 +653,50 @@ paths:
       operationId: createModelEndpoint
       responses:
         "201": { description: Created }
+  /model-endpoints/{id}:
+    get:
+      tags: [agents]
+      summary: Get model endpoint
+      operationId: getModelEndpoint
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    patch:
+      tags: [agents]
+      summary: Update model endpoint
+      operationId: updateModelEndpoint
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [agents]
+      summary: Delete model endpoint
+      operationId: deleteModelEndpoint
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "204": { description: Deleted }
+  /ai/jobs:
+    post:
+      tags: [agents]
+      summary: Run suggestions-only AI job stub
+      operationId: createAIJob
+      responses:
+        "201": { description: Created }
+        "403": { description: Non-suggest job refused }
+        "503": { description: AI assist disabled }
+  /change-requests/{id}:approve:
+    post:
+      tags: [agents]
+      summary: Approve change request (step-up required)
+      operationId: approveChangeRequest
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+        "401": { description: Step-up required }
   /models:
     get:
       tags: [agents]

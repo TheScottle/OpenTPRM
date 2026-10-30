@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
@@ -74,6 +75,8 @@ func (a *App) routeAPIInner(w http.ResponseWriter, r *http.Request) {
 		a.handleLegalHolds(w, r, ac)
 	case path == "/suggestions" || strings.HasPrefix(path, "/suggestions"):
 		a.handleSuggestions(w, r, ac)
+	case path == "/ai/jobs" || strings.HasPrefix(path, "/ai/jobs"):
+		a.handleAIJobs(w, r, ac)
 	case path == "/change-requests" || strings.HasPrefix(path, "/change-requests"):
 		a.handleChangeRequests(w, r, ac)
 	case path == "/agent-clients" || strings.HasPrefix(path, "/agent-clients"):
@@ -135,7 +138,7 @@ func (a *App) authContext(r *http.Request) authz.Context {
 	if r.Header.Get("X-OpenTPRM-Principal") == "agent" {
 		pt = authz.PrincipalAgent
 	}
-	return authz.Context{
+	ac := authz.Context{
 		PrincipalID:   uid,
 		PrincipalType: pt,
 		Roles:         roles,
@@ -146,6 +149,10 @@ func (a *App) authContext(r *http.Request) authz.Context {
 		IP:            r.RemoteAddr,
 		TraceID:       traceID,
 	}
+	if r.Header.Get("X-OpenTPRM-StepUp") == "1" {
+		ac.StepUpAt = time.Now().UTC()
+	}
+	return ac
 }
 
 func (a *App) handleAuditVerify(w http.ResponseWriter, r *http.Request) {

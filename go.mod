@@ -8,6 +8,7 @@ require (
 	cel.dev/cel-go v0.33.1
 	filippo.io/age v1.3.2
 	github.com/cedar-policy/cedar-go v1.9.0
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/google/uuid v1.6.0
 	github.com/ncruces/go-sqlite3 v0.36.0
 	golang.org/x/crypto v0.58.0

@@ -133,6 +133,36 @@ func (s *Store) ListQuestionnaireInstances(ctx context.Context, engagementID str
 	return out, rows.Err()
 }
 
+// ListQuestionnaireInstancesByVendor lists instances for engagements belonging to vendorID (third_party_id).
+func (s *Store) ListQuestionnaireInstancesByVendor(ctx context.Context, vendorID string) ([]QuestionnaireInstance, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return nil, err
+	}
+	if vendorID == "" {
+		return nil, fmt.Errorf("vendor_id required")
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT qi.id, qi.template_version_id, qi.engagement_id, qi.assessment_id, qi.pinned_hash, qi.status, qi.delta_of,
+		qi.created_by, qi.updated_by, qi.created_at, qi.updated_at, qi.row_version
+		FROM questionnaire_instances qi
+		INNER JOIN engagements e ON e.id = qi.engagement_id
+		WHERE e.third_party_id=?
+		ORDER BY qi.created_at`, vendorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []QuestionnaireInstance
+	for rows.Next() {
+		var in QuestionnaireInstance
+		if err := rows.Scan(&in.ID, &in.TemplateVersionID, &in.EngagementID, &in.AssessmentID, &in.PinnedHash, &in.Status, &in.DeltaOf,
+			&in.CreatedBy, &in.UpdatedBy, &in.CreatedAt, &in.UpdatedAt, &in.RowVersion); err != nil {
+			return nil, err
+		}
+		out = append(out, in)
+	}
+	return out, rows.Err()
+}
+
 // LatestAnswers returns the newest response revision answers map for an instance.
 func (s *Store) LatestAnswers(ctx context.Context, instanceID string) (map[string]any, int, error) {
 	if _, err := RequireAuthz(ctx); err != nil {

@@ -9,8 +9,12 @@ import (
 
 func TestAI_023_OpaqueTokenIssueVerifyHashed(t *testing.T) {
 	as := NewAuthorizationServer(time.Minute, true)
+	dpopKey, err := NewTestDPoPKey()
+	if err != nil {
+		t.Fatal(err)
+	}
 	issued, err := as.IssueOpaqueAccessToken("client-1", "user-1", "https://tprm.example/mcp",
-		[]string{"tprm.read"}, "thumb-abc")
+		[]string{"tprm.read"}, dpopKey.Thumbprint)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,9 +31,14 @@ func TestAI_023_OpaqueTokenIssueVerifyHashed(t *testing.T) {
 		t.Fatal("id hash mismatch")
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	proofUse, err := dpopKey.Proof(http.MethodPost, "https://tprm.example/mcp", issued.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "https://tprm.example/mcp", nil)
+	req.Host = "tprm.example"
 	req.Header.Set("Authorization", "DPoP "+issued.AccessToken)
-	req.Header.Set("DPoP", "eyJstub.proof")
+	req.Header.Set("DPoP", proofUse)
 	got, err := as.VerifyOpaqueAccessToken(req, "https://tprm.example/mcp")
 	if err != nil {
 		t.Fatal(err)
@@ -39,9 +48,10 @@ func TestAI_023_OpaqueTokenIssueVerifyHashed(t *testing.T) {
 	}
 
 	// Bearer refused when sender-constraint required.
-	req2 := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req2 := httptest.NewRequest(http.MethodPost, "https://tprm.example/mcp", nil)
+	req2.Host = "tprm.example"
 	req2.Header.Set("Authorization", "Bearer "+issued.AccessToken)
-	req2.Header.Set("DPoP", "eyJstub.proof")
+	req2.Header.Set("DPoP", proofUse)
 	if _, err := as.VerifyOpaqueAccessToken(req2, "https://tprm.example/mcp"); err != ErrBearerNotAllowed {
 		t.Fatalf("got %v", err)
 	}
@@ -49,6 +59,7 @@ func TestAI_023_OpaqueTokenIssueVerifyHashed(t *testing.T) {
 
 func TestAI_023_DPoPHeaderPresenceStub(t *testing.T) {
 	as := NewAuthorizationServer(time.Minute, true)
+	as.VerifyDPoPProof = false
 	issued, err := as.IssueOpaqueAccessToken("c", "u", "aud", []string{"tprm.read"}, "thumb")
 	if err != nil {
 		t.Fatal(err)

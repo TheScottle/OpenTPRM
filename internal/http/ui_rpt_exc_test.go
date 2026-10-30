@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
@@ -164,16 +165,22 @@ func TestUI_AnalystHomeAndVendors(t *testing.T) {
 
 func TestOAuth_TokenIssueRequiresDPoP(t *testing.T) {
 	_, h := testApp(t)
-	req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader("grant_type=client_credentials&client_id=c1&scope=tprm.read"))
+	req := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:8443/oauth/token", strings.NewReader("grant_type=client_credentials&client_id=c1&scope=tprm.read"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Host = "127.0.0.1:8443"
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != 401 {
 		t.Fatalf("expected DPoP required, got %d %s", w.Code, w.Body.String())
 	}
-	req2 := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader("grant_type=client_credentials&client_id=c1&scope=tprm.read"))
+	proof, _, err := authn.MintTestDPoPProof(http.MethodPost, "https://127.0.0.1:8443/oauth/token", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req2 := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:8443/oauth/token", strings.NewReader("grant_type=client_credentials&client_id=c1&scope=tprm.read"))
 	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req2.Header.Set("DPoP", "eyJstub")
+	req2.Host = "127.0.0.1:8443"
+	req2.Header.Set("DPoP", proof)
 	w2 := httptest.NewRecorder()
 	h.ServeHTTP(w2, req2)
 	if w2.Code != 200 {

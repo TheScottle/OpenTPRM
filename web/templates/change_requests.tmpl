@@ -1,0 +1,33 @@
+{{define "change_requests.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>Change requests</h1>
+  <p class="lede">Human approval queue for agent-proposed mutations. Approvals require recent step-up.</p>
+  {{if .Items}}
+  <table class="list">
+    <thead><tr><th>Action</th><th>Target</th><th>Status</th><th>Rationale</th><th></th></tr></thead>
+    <tbody>
+    {{range .Items}}
+      <tr>
+        <td>{{.Action}}</td>
+        <td>{{.TargetType}}/{{.TargetID}}</td>
+        <td>{{.Status}}</td>
+        <td>{{.Rationale}}</td>
+        <td>
+          {{if and $.CanApprove (eq .Status "pending_approval")}}
+          <form method="POST" action="/change-requests/{{.ID}}:approve" class="inline">
+            <button class="btn" type="submit">Approve</button>
+          </form>
+          <form method="POST" action="/change-requests/{{.ID}}:reject" class="inline">
+            <button class="btn btn-muted" type="submit">Reject</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No change requests yet.</p>
+  {{end}}
+</section>
+{{template "footer" .}}{{end}}

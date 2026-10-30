@@ -28,6 +28,7 @@ const (
 	ActionExportBulk             = "export:bulk"
 	ActionSuggest                = "suggestion:create"
 	ActionChangeRequest          = "change_request:create"
+	ActionChangeRequestApprove   = "change_request:approve"
 	ActionIdentityManage         = "identity:manage"
 	ActionPolicyManage           = "policy:manage"
 )
