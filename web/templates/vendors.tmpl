@@ -2,9 +2,20 @@
 <section class="page">
   <h1>Vendors</h1>
   <p class="lede">Third-party inventory visible to your session.</p>
+
+  {{if .CanWrite}}
+  <form method="POST" action="/vendors" class="stack panel">
+    {{if .CSRFToken}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}
+    <input type="hidden" name="action" value="create">
+    <h2>Add vendor</h2>
+    <label>Legal name <input name="legal_name" type="text" required></label>
+    <button type="submit" class="btn">Create vendor</button>
+  </form>
+  {{end}}
+
   {{if .Vendors}}
   <table class="list">
-    <thead><tr><th>Legal name</th><th>Status</th><th>Tier</th><th>Classification</th></tr></thead>
+    <thead><tr><th>Legal name</th><th>Status</th><th>Tier</th><th>Classification</th><th></th></tr></thead>
     <tbody>
     {{range .Vendors}}
       <tr>
@@ -12,12 +23,36 @@
         <td>{{.Status}}</td>
         <td>{{.Tier}}</td>
         <td>{{.Classification}}</td>
+        <td>
+          {{if $.CanWrite}}
+          <form method="POST" action="/vendors" class="inline stack-tight">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
+            <input type="hidden" name="action" value="update">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <input name="legal_name" type="text" value="{{.LegalName}}">
+            <select name="status">
+              <option value="active" {{if eq .Status "active"}}selected{{end}}>active</option>
+              <option value="inactive" {{if eq .Status "inactive"}}selected{{end}}>inactive</option>
+              <option value="offboarded" {{if eq .Status "offboarded"}}selected{{end}}>offboarded</option>
+            </select>
+            <button class="btn" type="submit">Save</button>
+          </form>
+          <form method="POST" action="/vendors" class="inline stack-tight">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
+            <input type="hidden" name="action" value="create_engagement">
+            <input type="hidden" name="vendor_id" value="{{.ID}}">
+            <input name="relationship_owner" type="text" placeholder="relationship owner" required>
+            <input name="service_description" type="text" placeholder="service">
+            <button class="btn btn-muted" type="submit">Add engagement</button>
+          </form>
+          {{end}}
+        </td>
       </tr>
     {{end}}
     </tbody>
   </table>
   {{else}}
-  <p class="empty">No vendors yet. Create one via <code>POST /api/v1/vendors</code>.</p>
+  <p class="empty">No vendors yet.</p>
   {{end}}
 </section>
 {{template "footer" .}}{{end}}

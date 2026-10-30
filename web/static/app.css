@@ -101,6 +101,24 @@ form.inline button { border: 0; cursor: pointer; font: inherit; }
 .plain a:hover { text-decoration: underline; }
 h2 { font-family: var(--font-display); font-size: 1.25rem; margin: 1.75rem 0 0.5rem; font-weight: 600; }
 code { font-size: 0.9em; }
+.panel {
+  background: rgba(255,255,255,0.55);
+  border: 1px solid var(--line);
+  padding: 1.25rem 1.35rem;
+  margin: 0 0 1.5rem;
+}
+.stack { display: flex; flex-direction: column; gap: 0.75rem; max-width: 28rem; }
+.stack label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; color: var(--muted); }
+.stack input, .stack select, .stack textarea, .stack-tight input, .stack-tight select {
+  font: inherit; color: var(--ink); padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line); background: #fff; border-radius: 2px;
+}
+.stack button { align-self: flex-start; border: 0; cursor: pointer; }
+.stack-tight { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-top: 0.35rem; }
+.error { color: #8b2e2e; background: #f7e8e8; padding: 0.6rem 0.75rem; margin: 0 0 1rem; }
+.note { color: var(--muted); font-size: 0.9rem; margin-top: 1rem; }
+.muted { color: var(--muted); white-space: pre-wrap; font-size: 0.85rem; }
+.user a { color: var(--accent); }
 
 @keyframes rise {
   from { opacity: 0; transform: translateY(8px); }

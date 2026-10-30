@@ -10,6 +10,7 @@
 <body>
   <header class="top">
     <a class="brand" href="/">OpenTPRM</a>
+    {{if .User}}
     <nav>
       <a href="/">Home</a>
       <a href="/vendors">Vendors</a>
@@ -18,9 +19,10 @@
       <a href="/answer-library">Answer library</a>
       <a href="/change-requests">Change requests</a>
       <a href="/me/agent-grants">Agent grants</a>
-      <a href="/api/v1/openapi.json">API</a>
+      {{if .IsAdmin}}<a href="/admin/users">Users</a>{{end}}
     </nav>
-    {{if .User}}<span class="user">{{.User}}</span>{{end}}
+    <span class="user">{{.User}} · <a href="/logout">Sign out</a></span>
+    {{end}}
   </header>
   <main>
 {{end}}

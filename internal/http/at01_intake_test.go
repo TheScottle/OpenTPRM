@@ -146,7 +146,7 @@ func TestSEC_AZ_001_ProductionDevHeadersRefused(t *testing.T) {
 	r.Header.Set("X-OpenTPRM-Roles", "risk_analyst")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, r)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("dev headers in non-allow mode must not authorize writes/reads as analyst; got %d %s", w.Code, w.Body.String())
+	if w.Code != http.StatusUnauthorized && w.Code != http.StatusForbidden {
+		t.Fatalf("dev headers in non-allow mode must not authorize; got %d %s", w.Code, w.Body.String())
 	}
 }

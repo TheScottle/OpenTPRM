@@ -2,6 +2,8 @@
 
 Operator map of the third-party lifecycle as implemented in OpenTPRM today (REST + analyst HTML + MCP). Agents **suggest**; humans **decide**.
 
+**Auth:** All analyst UI and `/api/v1/*` (including OpenAPI) require a session from `/login` (email + password). Use `/admin/users` to create workforce accounts. CSRF is required on HTML form posts.
+
 ## Lifecycle overview
 
 ```text
@@ -17,10 +19,10 @@ Portal (vendor) path is separate and **off by default**. Backup/restore drill: s
 
 | Step | UI / API | Notes |
 |------|----------|-------|
-| Create / list vendors | `/vendors` · `POST/GET /api/v1/vendors` | Legal name, tags, contacts, engagements |
+| Create / list / edit vendors | `/vendors` (forms) · `POST/GET /api/v1/vendors` | HTML create, status/name edit, add engagement |
 | CSV import (quarantine) | `POST /api/v1/vendors:import` | No formula eval |
-| Intake record | `/intakes` · `POST /api/v1/intakes` | Requires existing `engagement_id` (FK); missing/unknown → **400** |
-| Submit + tier | `POST /api/v1/intakes/{id}:submit` | Inherent-risk tiering drives diligence scope |
+| Intake record | `/intakes` (forms) · `POST /api/v1/intakes` | Create draft from engagement; missing/unknown engagement → **400** |
+| Submit + tier | `/intakes` Submit · `POST /api/v1/intakes/{id}:submit` | Inherent-risk tiering drives diligence scope |
 
 Duplicate detect / merge and next-action due live on the inventory store (`:merge`, history). Prefer the intake queue for first-pass triage.
 
@@ -39,7 +41,7 @@ Assessments collect questionnaire instances and evidence under one diligence eff
 |------|---------|-------|
 | Templates / publish | `/api/v1/questionnaire-templates` | Core/Lite/Intake seeds (NIST-mapped only) |
 | Instances / responses / review | `/api/v1/questionnaire-instances` | Scoring + delta (AT-15) |
-| Answer library | `/answer-library` · `/api/v1/answer-library` | Reuse prior answers |
+| Answer library | `/answer-library` (upsert form) · `/api/v1/answer-library` | Reuse prior answers |
 | Offline pack | domain offline zip | Signed pack/unpack for offline completion |
 | Evidence upload | `/api/v1/uploads` → `:complete` | Chunked → blob + quarantine |
 | Viewer | evidence page text/HTML APIs | Sanitized viewer; sandbox extract |
@@ -60,7 +62,7 @@ Findings can originate from human review or from **accepted** AI suggestions wit
 
 | Step | UI / API | Notes |
 |------|----------|-------|
-| Exception list / create | `/exceptions` · `/api/v1/exceptions` | SOD: requester ≠ approver |
+| Exception list / create | `/exceptions` (create form) · `/api/v1/exceptions` | SOD: requester ≠ approver |
 | Approve | UI + `POST /api/v1/exceptions/{id}:approve` | Signed decision path |
 | Change requests | `/change-requests` | Dual-control; WebAuthn **step-up** on decide |
 | Exports / committee packs | `/api/v1/exports` | Markings; sensitive bulk export needs step-up |
@@ -120,4 +122,4 @@ Online snapshot + age encryption + signed manifest. Prefer verify-only drills be
 
 ## First-login cross-link
 
-Before running analyst workflows on a new instance, complete [first-login.md](first-login.md) (bootstrap token → admins → passkeys → `/health/ready`).
+Before running analyst workflows on a new instance, complete [first-login.md](first-login.md) (bootstrap token → admin passwords → `/login` → optional passkey → create users).

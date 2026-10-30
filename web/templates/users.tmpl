@@ -1,0 +1,64 @@
+{{define "users.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>Users</h1>
+  <p class="lede">Administrator identity management. Granting Security or System Administrator roles requires a second administrator’s confirmation.</p>
+
+  <form method="POST" action="/admin/users" class="stack panel">
+    {{if .CSRFToken}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}
+    <input type="hidden" name="action" value="create">
+    <h2>Create user</h2>
+    <label>Email <input name="email" type="email" required></label>
+    <label>Display name <input name="display_name" type="text"></label>
+    <label>Roles (comma-separated)
+      <input name="roles" type="text" placeholder="risk_analyst,approver" required>
+    </label>
+    <label>Password (optional — temp generated if empty)
+      <input name="password" type="password" minlength="15" autocomplete="new-password">
+    </label>
+    <label><input type="checkbox" name="must_change" value="1" checked> Must change password</label>
+    <label>Second admin email (required when granting admin roles)
+      <input name="second_admin_email" type="email">
+    </label>
+    <label>Second admin password
+      <input name="second_admin_password" type="password" autocomplete="off">
+    </label>
+    <button type="submit" class="btn">Create</button>
+  </form>
+
+  <table class="list">
+    <thead><tr><th>Email</th><th>Name</th><th>Roles</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .Users}}
+      <tr>
+        <td>{{.Email}}</td>
+        <td>{{.DisplayName}}</td>
+        <td class="mono">{{range $i, $r := .Roles}}{{if $i}}, {{end}}{{$r}}{{end}}</td>
+        <td>{{if .Disabled}}disabled{{else}}active{{end}}</td>
+        <td>
+          <form method="POST" action="/admin/users" class="inline">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
+            <input type="hidden" name="id" value="{{.ID}}">
+            {{if .Disabled}}
+            <input type="hidden" name="action" value="enable">
+            <button class="btn btn-muted" type="submit">Enable</button>
+            {{else}}
+            <input type="hidden" name="action" value="disable">
+            <button class="btn btn-muted" type="submit">Disable</button>
+            {{end}}
+          </form>
+          <form method="POST" action="/admin/users" class="inline">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
+            <input type="hidden" name="action" value="reset_password">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <input name="password" type="password" placeholder="new password (optional)" minlength="15">
+            <button class="btn" type="submit">Reset password</button>
+          </form>
+        </td>
+      </tr>
+    {{else}}
+      <tr><td colspan="5">No users.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{template "footer" .}}{{end}}

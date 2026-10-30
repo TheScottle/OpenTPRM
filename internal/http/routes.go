@@ -32,6 +32,8 @@ func (a *App) routeAPIInner(w http.ResponseWriter, r *http.Request) {
 		})
 	case path == "/me/agent-grants" || strings.HasPrefix(path, "/me/agent-grants"):
 		a.handleMeAgentGrants(w, r, ac)
+	case path == "/users" || strings.HasPrefix(path, "/users/") || strings.HasPrefix(path, "/users"):
+		a.handleUsers(w, r, ac)
 	case strings.HasPrefix(path, "/auth/"):
 		a.handleAuth(w, r, ac)
 	case path == "/tasks" || strings.HasPrefix(path, "/tasks"):

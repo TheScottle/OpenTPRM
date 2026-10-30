@@ -19,9 +19,11 @@ func TestOPS_003_BootstrapHTTPConsume(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(map[string]string{
-		"token":                token,
-		"security_admin_email": "sec@example.com",
-		"system_admin_email":   "sys@example.com",
+		"token":                    token,
+		"security_admin_email":     "sec@example.com",
+		"system_admin_email":       "sys@example.com",
+		"security_admin_password":  "security-admin-pass1",
+		"system_admin_password":    "system-admin-pass1xx",
 	})
 	// Browser fetch on non-default port sends Origin with :port (Unraid :8443).
 	req := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:8443/api/v1/auth/bootstrap", bytes.NewReader(body))
@@ -53,23 +55,35 @@ func TestOPS_003_BootstrapHTTPConsume(t *testing.T) {
 		t.Fatalf("replay want 409, got %d %s", w2.Code, w2.Body.String())
 	}
 
+	// After consume, bootstrap UI redirects to login (token no longer pending).
 	reqUI := httptest.NewRequest(http.MethodGet, "/bootstrap", nil)
 	wUI := httptest.NewRecorder()
 	h.ServeHTTP(wUI, reqUI)
-	if wUI.Code != http.StatusOK || !bytes.Contains(wUI.Body.Bytes(), []byte("First login")) {
-		t.Fatalf("bootstrap UI: %d %s", wUI.Code, wUI.Body.String())
+	if wUI.Code != http.StatusSeeOther {
+		t.Fatalf("bootstrap UI after consume want redirect, got %d %s", wUI.Code, wUI.Body.String())
 	}
-	if !bytes.Contains(wUI.Body.Bytes(), []byte(`/static/bootstrap.js`)) {
+
+	token2 := "second-bootstrap-token-for-ui-check-0123456789ab"
+	if err := authn.RegisterBootstrapToken(t.Context(), app.Store.DB(), token2, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	reqUI2 := httptest.NewRequest(http.MethodGet, "/bootstrap", nil)
+	wUI2 := httptest.NewRecorder()
+	h.ServeHTTP(wUI2, reqUI2)
+	if wUI2.Code != http.StatusOK || !bytes.Contains(wUI2.Body.Bytes(), []byte("First login")) {
+		t.Fatalf("bootstrap UI: %d %s", wUI2.Code, wUI2.Body.String())
+	}
+	if !bytes.Contains(wUI2.Body.Bytes(), []byte(`/static/bootstrap.js`)) {
 		t.Fatal("bootstrap UI must load CSP-safe /static/bootstrap.js (no inline script)")
 	}
-	if bytes.Contains(wUI.Body.Bytes(), []byte("<script>\n")) || bytes.Contains(wUI.Body.Bytes(), []byte("<script>(")) {
+	if bytes.Contains(wUI2.Body.Bytes(), []byte("<script>\n")) || bytes.Contains(wUI2.Body.Bytes(), []byte("<script>(")) {
 		t.Fatal("bootstrap UI must not embed inline script (CSP script-src 'self')")
 	}
 
 	reqJS := httptest.NewRequest(http.MethodGet, "/static/bootstrap.js", nil)
 	wJS := httptest.NewRecorder()
 	h.ServeHTTP(wJS, reqJS)
-	if wJS.Code != http.StatusOK || !bytes.Contains(wJS.Body.Bytes(), []byte("/api/v1/auth/bootstrap")) {
+	if wJS.Code != http.StatusOK || !bytes.Contains(wJS.Body.Bytes(), []byte("security_admin_password")) {
 		t.Fatalf("bootstrap.js: %d %s", wJS.Code, wJS.Body.String())
 	}
 }

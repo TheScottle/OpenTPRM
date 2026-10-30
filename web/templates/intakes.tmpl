@@ -2,9 +2,27 @@
 <section class="page">
   <h1>Intake queue</h1>
   <p class="lede">Analyst view of intake submissions awaiting triage and tiering.</p>
+
+  {{if .CanWrite}}
+  <form method="POST" action="/intakes" class="stack panel">
+    {{if .CSRFToken}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}
+    <input type="hidden" name="action" value="create">
+    <h2>Create intake</h2>
+    <label>Engagement
+      <select name="engagement_id" required>
+        <option value="">Select engagement</option>
+        {{range .Engagements}}
+        <option value="{{.ID}}">{{.ID}} · {{.ServiceDescription}}</option>
+        {{end}}
+      </select>
+    </label>
+    <button type="submit" class="btn">Create draft</button>
+  </form>
+  {{end}}
+
   {{if .Items}}
   <table class="list">
-    <thead><tr><th>ID</th><th>Engagement</th><th>Status</th><th>Tier</th><th>Score</th><th>Created by</th></tr></thead>
+    <thead><tr><th>ID</th><th>Engagement</th><th>Status</th><th>Tier</th><th>Score</th><th>Created by</th><th></th></tr></thead>
     <tbody>
     {{range .Items}}
       <tr>
@@ -14,12 +32,22 @@
         <td>{{.Tier}}</td>
         <td>{{printf "%.1f" .WeightedScore}}</td>
         <td>{{.CreatedBy}}</td>
+        <td>
+          {{if and $.CanWrite (eq .Status "draft")}}
+          <form method="POST" action="/intakes" class="inline">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
+            <input type="hidden" name="action" value="submit">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button class="btn" type="submit">Submit</button>
+          </form>
+          {{end}}
+        </td>
       </tr>
     {{end}}
     </tbody>
   </table>
   {{else}}
-  <p class="empty">No intakes in the queue. Submit via <code>POST /api/v1/intakes</code>.</p>
+  <p class="empty">No intakes in the queue.</p>
   {{end}}
 </section>
 {{template "footer" .}}{{end}}

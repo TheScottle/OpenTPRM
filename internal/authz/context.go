@@ -51,6 +51,12 @@ func (c Context) Valid() bool {
 	return c.PrincipalID != "" && c.PrincipalType != ""
 }
 
+// Authenticated reports a real workforce/agent principal (not anonymous).
+// Cookie sessions and AllowDevHeaders test principals both qualify when PrincipalID is set.
+func (c Context) Authenticated() bool {
+	return c.PrincipalID != "" && c.PrincipalID != "anonymous" && c.PrincipalType != ""
+}
+
 // HasRole reports whether the principal holds the named role.
 func (c Context) HasRole(role string) bool {
 	for _, r := range c.Roles {

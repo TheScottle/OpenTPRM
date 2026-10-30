@@ -1,108 +1,67 @@
 # First login (live test)
 
-This is the Owner path from a fresh `opentprm init` to an unsealed, ready Listener A on port **8443**.
+Owner path from a fresh `opentprm init` to an authenticated Listener A on port **8443**.
 
 ## What URL to open
 
 | Environment | URL |
 |-------------|-----|
 | Unraid (Bridge) | `https://<UNRAID-LAN-IP>:8443` |
-| Local smoke | `https://127.0.0.1:8443` (or whatever `server.internal.listen` / `public_base_url` say) |
+| Local smoke | `https://127.0.0.1:8443` |
 
-TLS uses the self-signed cert from `init` unless you replaced it. Expect a browser warning until you trust that cert (or terminate TLS at a reverse proxy later).
-
-Useful paths after the container is up:
+TLS uses the self-signed cert from `init` unless you replaced it.
 
 | Path | Purpose |
 |------|---------|
-| `/health/live` | Process up → `{"status":"ok"}` |
-| `/health/ready` | Unsealed + DB → `{"status":"ready"}`; sealed → **503** `{"status":"sealed"}` |
-| `/bootstrap` | One-time first-admin enrollment form |
-| `/` | Analyst home (after you have a session / roles) |
+| `/health/live` | Process up → `{"status":"ok"}` (public) |
+| `/health/ready` | Unsealed + DB → `ready`; sealed → **503** (public) |
+| `/bootstrap` | One-time first-admin enrollment (**only while** bootstrap token is unused) |
+| `/login` | Email + password sign-in (public) |
+| `/` and other UI | **Require session** — anonymous visitors redirect to `/login` |
 
 ## Sealed vs ready
 
-- **Sealed:** master key file missing or unreadable. Only health endpoints answer; data APIs return **503**. Fix: place `master.key` at the configured `keys.master_key_file` (Unraid: `/run/secrets/opentprm_master_key`) and restart.
-- **Ready:** key loaded, encrypted SQLite open, migrations applied. `/health/ready` returns **200** `{"status":"ready"}`.
+- **Sealed:** master key missing. Only health answers; data APIs **503**.
+- **Ready:** key loaded, encrypted SQLite open. Proceed to bootstrap or login.
 
-## Bootstrap token (OPS-003)
+## Bootstrap (OPS-003)
 
-`opentprm init` creates:
-
-1. Master key (`0400`)
-2. Self-signed TLS material
-3. Encrypted DB + hashed bootstrap token in DB
-4. Plaintext token file `data/bootstrap.token` (**mode 0400**, **TTL 1 hour**)
-
-On Unraid, capture the token from `install.sh` / one-shot `init` container stdout **or** read the host file once:
-
-```bash
-sudo cat /mnt/user/appdata/opentprm/data/bootstrap.token
-```
-
-Treat it like a break-glass secret. It is **single-use**: after successful consume it cannot be reused. If the hour expires before you enroll, re-init is not automatic — prefer completing enroll within the window on a fresh install.
-
-## Enroll first Security Admin + System Admin
+`opentprm init` creates master key, TLS material, encrypted DB, and a one-time bootstrap token (`data/bootstrap.token`, mode **0400**, TTL **1 hour**).
 
 1. Confirm `/health/ready` is `ready`.
-2. Open `https://<host>:8443/bootstrap`.
+2. Open `/bootstrap`.
 3. Paste the bootstrap token.
-4. Enter **two different** emails:
-   - Security Administrator (keys, agents, policy, audit)
-   - System Administrator (platform ops)
-5. Submit (form uses `/static/bootstrap.js` under CSP `script-src 'self'`). API: `POST /api/v1/auth/bootstrap` with JSON  
-   `{ "token", "security_admin_email", "system_admin_email" }` → **201** and two `user_id`s.  
-   Browser calls send `Origin: https://<host>:8443`; the server matches hostname **and** non-default port (not a cross-site reject).
-6. **Passkey enroll** for each returned id via  
-   `POST /api/v1/auth/webauthn/enroll/begin` then `/enroll/finish`  
-   (COSE / public-key metadata path). Full browser CTAP attestation UI is still maturing; the API path is what live tests should exercise first.
-7. Subsequent login: `/auth/webauthn/login/begin` + `/finish` (session cookie + CSRF token once). HTML approve forms use a rotated `csrf_token` field. WebAuthn **step-up** is persisted on the session (`step_up_at`) so change-request / sensitive export gates survive cookie round-trips.
+4. Enter **two different** emails and **two passwords** (each ≥ **15** characters, Argon2id):
+   - Security Administrator
+   - System Administrator
+5. Submit. API: `POST /api/v1/auth/bootstrap` with  
+   `{ token, security_admin_email, system_admin_email, security_admin_password, system_admin_password }` → **201**.
+6. Open `/login` and sign in with either admin email + password.
+7. Optional: enroll a passkey (session required) via  
+   `POST /api/v1/auth/webauthn/enroll/begin` then `/finish` for step-up on approvals/exports.
 
-Dev-only shortcut (never production): `mode: development` may honor `X-OpenTPRM-User` / `X-OpenTPRM-Roles` headers for API smoke. Production refuses insecure identity shortcuts.
+After bootstrap succeeds, `/bootstrap` redirects to `/login`.
+
+## Day-to-day authentication
+
+- **Primary:** email + password → `__Host-otp_s` session cookie + CSRF token.
+- **Step-up:** WebAuthn passkey within 5 minutes for change-request decisions, sensitive exports, and similar gates. Password login alone does **not** satisfy step-up.
+- **Logout:** `/logout` or `POST /api/v1/auth/logout`.
+- Anonymous UI/API access is refused (HTML → login redirect; JSON → **401**). OpenAPI is authenticated-only.
+
+Dev-only shortcut (never production): `mode: development` may honor `X-OpenTPRM-User` / `X-OpenTPRM-Roles` for API smoke.
+
+## Create more users
+
+1. Sign in as Security or System Administrator.
+2. Open **Users** (`/admin/users`) or call `POST /api/v1/users`.
+3. Assign roles (`risk_analyst`, `approver`, `auditor`, …). Granting `security_administrator` or `system_administrator` requires a **second** distinct admin’s email + password (SOD-3).
+4. New users sign in at `/login`. If no password was supplied at create time, a one-time temporary password is returned once.
 
 ## OIDC (optional)
 
-Workforce SSO is **authorization code + PKCE** only. Leave `identity.oidc.issuer` empty for the first live test if you are using local passkeys only.
+Workforce SSO (authorization code + PKCE) remains available for later IdP wiring. Leave `identity.oidc.issuer` empty for the first live test when using local passwords.
 
-When ready (Keycloak sketch):
+## Unraid notes
 
-1. Confidential/public client; Standard flow ON; Implicit OFF.
-2. Redirect: `https://<listener-a>/api/v1/auth/oidc/callback`
-3. PKCE S256; store client secret in a **file** secret (`identity.oidc.client_secret_file`), never env.
-4. Require MFA in the IdP; map `amr`/`acr` to `identity.oidc.require_amr`.
-5. Map groups with `identity.oidc.group_role_map`.
-
-See [operator.md](operator.md) for the full Keycloak checklist. HTTP session bridge for OIDC is still closing; passkey bootstrap remains the first-login path.
-
-## Unraid path notes
-
-Full pack: [`deploy/unraid/README-UNRAID.md`](../../deploy/unraid/README-UNRAID.md).
-
-1. `bash deploy/unraid/install.sh` (or manual `init` one-shot) under `/mnt/user/appdata/opentprm/`.
-2. Secrets as **host files** mode `0400` — never Unraid Variables for keys (OPS-002).
-3. Deploy CA template / Compose; Bridge; port **8443**; Privileged OFF; UID **65532**.
-4. Open `https://[IP]:8443` → check ready → `/bootstrap`.
-5. Keep vendor portal **off** until a reverse proxy + `trusted_proxies` are configured.
-
-## Production secrets checklist
-
-- [ ] `master.key` and TLS private key mode `0400`, mounted at `/run/secrets/...`
-- [ ] No `OPENTPRM_MASTER_KEY` / `OPENTPRM_TLS_KEY` / `OPENTPRM_OIDC_SECRET` environment variables
-- [ ] `mode: production` with TLS paths set; `server.public_base_url` = real LAN/public URL
-- [ ] Listener A not exposed beyond the intended admin network
-- [ ] Portal disabled until proxy + trusted proxies are ready
-- [ ] Bootstrap token wiped after enroll (file deleted; DB row already `used=1`)
-
-## Smoke (local)
-
-```bash
-CGO_ENABLED=0 go build -o opentprm ./cmd/opentprm
-tmpdir=$(mktemp -d)
-./opentprm init --data "$tmpdir/data" --master-key "$tmpdir/secrets/master.key" --tls-dir "$tmpdir/secrets"
-# Point a small config at those paths, listen 127.0.0.1:8443, then:
-./opentprm serve --config /path/to/config.yaml
-curl -sk https://127.0.0.1:8443/health/ready   # expect ready
-curl -sk https://127.0.0.1:8443/bootstrap      # expect HTML form
-```
-
-Self-signed TLS is expected; use `-k` / trust the printed fingerprint from `init`.
+See [`deploy/unraid/README-UNRAID.md`](../../deploy/unraid/README-UNRAID.md). Capture the bootstrap token once, complete `/bootstrap` within the hour, then use `/login`.

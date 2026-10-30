@@ -2,6 +2,19 @@
 <section class="page">
   <h1>Exceptions</h1>
   <p class="lede">Risk-acceptance queue. Approvals are signed and enforce SOD-2 (requester cannot approve).</p>
+
+  {{if .CanWrite}}
+  <form method="POST" action="/exceptions" class="stack panel">
+    {{if .CSRFToken}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}
+    <input type="hidden" name="action" value="create">
+    <h2>Request exception</h2>
+    <label>Engagement ID <input name="engagement_id" type="text" required></label>
+    <label>Scope <input name="scope" type="text" required></label>
+    <label>Rationale <textarea name="rationale" required></textarea></label>
+    <button type="submit" class="btn">Create</button>
+  </form>
+  {{end}}
+
   {{if .Items}}
   <table class="list">
     <thead><tr><th>Scope</th><th>Requester</th><th>Status</th><th>Engagement</th><th>Expires</th><th></th></tr></thead>
@@ -28,7 +41,7 @@
     </tbody>
   </table>
   {{else}}
-  <p class="empty">No exceptions yet. Create via <code>POST /api/v1/exceptions</code>.</p>
+  <p class="empty">No exceptions yet.</p>
   {{end}}
 </section>
 {{template "footer" .}}{{end}}

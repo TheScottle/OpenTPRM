@@ -66,6 +66,13 @@ when { principal.roles.contains("system_administrator") || principal.roles.conta
 
 permit (
   principal is User,
+  action == Action::"identity:manage",
+  resource
+)
+when { principal.roles.contains("system_administrator") || principal.roles.contains("security_administrator") };
+
+permit (
+  principal is User,
   action == Action::"evidence:read_content",
   resource
 )

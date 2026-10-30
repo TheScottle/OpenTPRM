@@ -174,14 +174,16 @@ func TestOPS_003_BootstrapTokenSelfDestruct(t *testing.T) {
 	if err := authn.RegisterBootstrapToken(ctx, db, token, now); err != nil {
 		t.Fatal(err)
 	}
-	sec, sys, err := authn.ConsumeBootstrapToken(ctx, db, token, "sec@example.com", "sys@example.com", now)
+	secPass := "security-admin-pass-01"
+	sysPass := "system-admin-pass-01xx"
+	sec, sys, err := authn.ConsumeBootstrapToken(ctx, db, token, "sec@example.com", "sys@example.com", secPass, sysPass, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sec == "" || sys == "" || sec == sys {
 		t.Fatalf("need distinct admin ids: %s %s", sec, sys)
 	}
-	_, _, err = authn.ConsumeBootstrapToken(ctx, db, token, "a@x", "b@x", now)
+	_, _, err = authn.ConsumeBootstrapToken(ctx, db, token, "a@x", "b@x", secPass, sysPass, now)
 	if err != authn.ErrBootstrapUsed {
 		t.Fatalf("reuse must fail: %v", err)
 	}

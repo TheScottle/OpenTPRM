@@ -1,10 +1,12 @@
 package httpserver
 
 import (
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/TheScottle/OpenTPRM/internal/audit"
@@ -17,10 +19,14 @@ func (a *App) handleAuth(w http.ResponseWriter, r *http.Request, ac authz.Contex
 	switch {
 	case path == "/auth/bootstrap" && r.Method == http.MethodPost:
 		a.handleBootstrapConsume(w, r)
+	case path == "/auth/password/login" && r.Method == http.MethodPost:
+		a.handlePasswordLogin(w, r)
+	case path == "/auth/password/change" && r.Method == http.MethodPost:
+		a.handlePasswordChange(w, r, ac)
 	case path == "/auth/webauthn/enroll/begin" && r.Method == http.MethodPost:
-		a.handleWebAuthnEnrollBegin(w, r)
+		a.handleWebAuthnEnrollBegin(w, r, ac)
 	case path == "/auth/webauthn/enroll/finish" && r.Method == http.MethodPost:
-		a.handleWebAuthnEnrollFinish(w, r)
+		a.handleWebAuthnEnrollFinish(w, r, ac)
 	case path == "/auth/webauthn/login/begin" && r.Method == http.MethodPost:
 		a.handleWebAuthnLoginBegin(w, r)
 	case path == "/auth/webauthn/login/finish" && r.Method == http.MethodPost:
@@ -37,16 +43,17 @@ func (a *App) handleAuth(w http.ResponseWriter, r *http.Request, ac authz.Contex
 }
 
 // handleBootstrapConsume enrolls the first Security + System Administrators (OPS-003).
-// Unauthenticated; one-time token from opentprm init self-destructs on success.
 func (a *App) handleBootstrapConsume(w http.ResponseWriter, r *http.Request) {
 	if a.Store == nil {
 		writeProblem(w, http.StatusServiceUnavailable, "unavailable", "store unavailable")
 		return
 	}
 	var body struct {
-		Token               string `json:"token"`
-		SecurityAdminEmail  string `json:"security_admin_email"`
-		SystemAdminEmail    string `json:"system_admin_email"`
+		Token                  string `json:"token"`
+		SecurityAdminEmail     string `json:"security_admin_email"`
+		SystemAdminEmail       string `json:"system_admin_email"`
+		SecurityAdminPassword  string `json:"security_admin_password"`
+		SystemAdminPassword    string `json:"system_admin_password"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		writeProblem(w, 400, "bad_request", "invalid json")
@@ -56,15 +63,24 @@ func (a *App) handleBootstrapConsume(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, 400, "bad_request", "token, security_admin_email, and system_admin_email required")
 		return
 	}
+	if body.SecurityAdminPassword == "" || body.SystemAdminPassword == "" {
+		writeProblem(w, 400, "bad_request", "security_admin_password and system_admin_password required (min 15 chars)")
+		return
+	}
 	if body.SecurityAdminEmail == body.SystemAdminEmail {
 		writeProblem(w, 400, "bad_request", "security and system administrator emails must differ")
 		return
 	}
 	secID, sysID, err := authn.ConsumeBootstrapToken(
-		r.Context(), a.Store.DB(), body.Token, body.SecurityAdminEmail, body.SystemAdminEmail, time.Now().UTC(),
+		r.Context(), a.Store.DB(), body.Token, body.SecurityAdminEmail, body.SystemAdminEmail,
+		body.SecurityAdminPassword, body.SystemAdminPassword, time.Now().UTC(),
 	)
 	if err == authn.ErrBootstrapUsed {
 		writeProblem(w, 409, "bootstrap_used", "bootstrap token already used or expired")
+		return
+	}
+	if err == authn.ErrPasswordPolicy || (err != nil && strings.Contains(err.Error(), "password")) {
+		writeProblem(w, 400, "bad_request", err.Error())
 		return
 	}
 	if err != nil {
@@ -81,8 +97,103 @@ func (a *App) handleBootstrapConsume(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, map[string]any{
 		"security_administrator_id": secID,
 		"system_administrator_id":   sysID,
-		"next":                      "enroll passkeys via POST /api/v1/auth/webauthn/enroll/begin then /finish for each user_id",
+		"next":                      "sign in at /login with email and password; optionally enroll a passkey for step-up",
 	})
+}
+
+func (a *App) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
+	if a.Store == nil || a.Sessions == nil {
+		writeProblem(w, 503, "unavailable", "auth unavailable")
+		return
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+	} else {
+		_ = r.ParseForm()
+		body.Email = r.FormValue("email")
+		body.Password = r.FormValue("password")
+	}
+	now := time.Now().UTC()
+	u, hash, err := authn.GetUserByEmail(r.Context(), a.Store.DB(), body.Email)
+	if err == sql.ErrNoRows {
+		writeProblem(w, 401, "unauthorized", "invalid credentials")
+		return
+	}
+	if err != nil {
+		writeProblem(w, 500, "error", "lookup failed")
+		return
+	}
+	if err := authn.CheckLoginAllowed(u, now); err == authn.ErrAccountLocked {
+		writeProblem(w, 423, "locked", "account locked; try again later")
+		return
+	}
+	if err != nil {
+		writeProblem(w, 401, "unauthorized", "invalid credentials")
+		return
+	}
+	ok, verr := authn.VerifyPassword(hash, body.Password)
+	if verr != nil || !ok {
+		_ = authn.RecordLoginFailure(r.Context(), a.Store.DB(), u.ID, now)
+		writeProblem(w, 401, "unauthorized", "invalid credentials")
+		return
+	}
+	_ = authn.RecordLoginSuccess(r.Context(), a.Store.DB(), u.ID, now)
+	sess, err := a.Sessions.Create(r.Context(), u.ID, 2, u.Roles, u.Email)
+	if err != nil {
+		writeProblem(w, 500, "error", "session create failed")
+		return
+	}
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	authn.SetSessionCookie(w, sess.ID, secure)
+	if a.Audit != nil {
+		_ = a.Audit.Append(r.Context(), audit.Event{
+			Actor: u.ID, Action: "auth.password_login", ResourceType: "session",
+			ResourceID: sess.IDHash, Decision: "allow",
+		})
+	}
+	writeJSON(w, 200, map[string]any{
+		"session": true, "csrf_token": sess.CSRFToken, "aal": sess.AAL,
+		"user_id": u.ID, "email": u.Email, "roles": u.Roles,
+		"must_change_password": u.MustChangePassword,
+	})
+}
+
+func (a *App) handlePasswordChange(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	if !ac.Authenticated() || a.Store == nil {
+		writeProblem(w, 401, "unauthorized", "authentication required")
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		writeProblem(w, 400, "bad_request", "invalid json")
+		return
+	}
+	user, hash, err := authn.GetUserPasswordHash(r.Context(), a.Store.DB(), ac.PrincipalID)
+	if err != nil {
+		writeProblem(w, 404, "not_found", "user not found")
+		return
+	}
+	ok, _ := authn.VerifyPassword(hash, body.CurrentPassword)
+	if !ok {
+		writeProblem(w, 401, "unauthorized", "current password incorrect")
+		return
+	}
+	if err := authn.SetUserPassword(r.Context(), a.Store.DB(), user.ID, body.NewPassword, user.Email, ac.PrincipalID, false); err != nil {
+		writeProblem(w, 400, "bad_request", err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 func stringsTrimPrefixAPI(path string) string {
@@ -93,46 +204,67 @@ func stringsTrimPrefixAPI(path string) string {
 	return path
 }
 
-func (a *App) handleWebAuthnEnrollBegin(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleWebAuthnEnrollBegin(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	if a.Challenges == nil {
 		writeProblem(w, 503, "unavailable", "webauthn unavailable")
+		return
+	}
+	if !ac.Authenticated() {
+		writeProblem(w, 401, "unauthorized", "session required to enroll passkey")
 		return
 	}
 	var body struct {
 		UserID string `json:"user_id"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil || body.UserID == "" {
-		writeProblem(w, 400, "bad_request", "user_id required")
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body)
+	uid := body.UserID
+	if uid == "" {
+		uid = ac.PrincipalID
+	}
+	// Self-enroll or admin managing identity.
+	if uid != ac.PrincipalID && !ac.HasRole("security_administrator") && !ac.HasRole("system_administrator") {
+		writeProblem(w, 403, "forbidden", "cannot enroll passkey for another user")
 		return
 	}
-	ch, err := a.Challenges.EnrollBegin(body.UserID, time.Now().UTC())
+	ch, err := a.Challenges.EnrollBegin(uid, time.Now().UTC())
 	if err != nil {
 		writeProblem(w, 500, "error", "challenge issue failed")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"challenge_id": ch.ID, "purpose": ch.Purpose, "expires_at": ch.ExpiresAt})
+	writeJSON(w, 200, map[string]any{"challenge_id": ch.ID, "purpose": ch.Purpose, "expires_at": ch.ExpiresAt, "user_id": uid})
 }
 
-func (a *App) handleWebAuthnEnrollFinish(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleWebAuthnEnrollFinish(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	if a.Challenges == nil || a.Credentials == nil {
 		writeProblem(w, 503, "unavailable", "webauthn unavailable")
+		return
+	}
+	if !ac.Authenticated() {
+		writeProblem(w, 401, "unauthorized", "session required to enroll passkey")
 		return
 	}
 	var body struct {
 		UserID            string   `json:"user_id"`
 		ChallengeID       string   `json:"challenge_id"`
-		CredentialID      string   `json:"credential_id"`       // hex
-		PublicKey         string   `json:"public_key"`          // hex raw Ed25519 (optional if COSE set)
-		PublicKeyCOSE     string   `json:"public_key_cose"`     // hex COSE_Key
-		PublicKeyAlg      int64    `json:"public_key_alg"`      // COSE alg
-		AAGUID            string   `json:"aaguid"`              // hex
+		CredentialID      string   `json:"credential_id"`
+		PublicKey         string   `json:"public_key"`
+		PublicKeyCOSE     string   `json:"public_key_cose"`
+		PublicKeyAlg      int64    `json:"public_key_alg"`
+		AAGUID            string   `json:"aaguid"`
 		Transports        []string `json:"transports"`
 		AttestationFormat string   `json:"attestation_format"`
 		Nickname          string   `json:"nickname"`
-		Signature         string   `json:"signature"` // hex
+		Signature         string   `json:"signature"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		writeProblem(w, 400, "bad_request", "invalid json")
+		return
+	}
+	if body.UserID == "" {
+		body.UserID = ac.PrincipalID
+	}
+	if body.UserID != ac.PrincipalID && !ac.HasRole("security_administrator") && !ac.HasRole("system_administrator") {
+		writeProblem(w, 403, "forbidden", "cannot enroll passkey for another user")
 		return
 	}
 	credID, err1 := hex.DecodeString(body.CredentialID)
@@ -255,7 +387,6 @@ func (a *App) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if purpose == "step_up" {
-		// Prefer existing cookie session when present.
 		if c, err := r.Cookie(authn.SessionCookie); err == nil && c.Value != "" {
 			if sess, err := a.Sessions.LookupByID(r.Context(), c.Value); err == nil && sess.UserID == body.UserID {
 				if err := a.Sessions.RecordStepUp(r.Context(), sess); err != nil {

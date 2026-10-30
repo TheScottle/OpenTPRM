@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -143,6 +144,12 @@ func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
 				}
 			}
 		}
+
+		// Session / principal gate (SEC-AZ-001): public allow-list or authenticated principal.
+		ac := a.authContext(r)
+		if !a.requireAuthOrPublic(w, r, ac) {
+			return
+		}
 		next(w, r)
 	}
 }
@@ -152,7 +159,15 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 	ac := a.authContext(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	switch {
+	case r.URL.Path == "/login" || r.URL.Path == "/login/":
+		a.handleLoginUI(w, r)
+	case r.URL.Path == "/logout" || r.URL.Path == "/logout/":
+		a.handleLogoutUI(w, r)
 	case r.URL.Path == "/bootstrap" || r.URL.Path == "/bootstrap/":
+		if !a.bootstrapPending(r) {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
 		data := map[string]any{"Title": "First login bootstrap"}
 		if err := a.Templates.ExecuteTemplate(w, "bootstrap.tmpl", data); err != nil {
 			writeProblem(w, 500, "error", "template render failed")
@@ -160,22 +175,13 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/" || r.URL.Path == "/home":
 		data := map[string]any{
 			"Title": "Analyst home", "User": ac.PrincipalID, "Roles": ac.Roles,
+			"IsAdmin": ac.HasRole("security_administrator") || ac.HasRole("system_administrator"),
 		}
 		if err := a.Templates.ExecuteTemplate(w, "home.tmpl", data); err != nil {
 			writeProblem(w, 500, "error", "template render failed")
 		}
 	case r.URL.Path == "/vendors" || r.URL.Path == "/vendors/":
-		var vendors []store.Vendor
-		if a.Store != nil && ac.Valid() {
-			ctx := authz.WithContext(r.Context(), ac)
-			vendors, _ = a.Store.ListVendors(ctx)
-		}
-		data := map[string]any{
-			"Title": "Vendors", "User": ac.PrincipalID, "Vendors": vendors,
-		}
-		if err := a.Templates.ExecuteTemplate(w, "vendors.tmpl", data); err != nil {
-			writeProblem(w, 500, "error", "template render failed")
-		}
+		a.handleVendorsUI(w, r, ac)
 	case r.URL.Path == "/change-requests" || r.URL.Path == "/change-requests/":
 		a.handleChangeRequestUI(w, r, ac)
 	case r.URL.Path == "/intakes" || r.URL.Path == "/intakes/":
@@ -186,6 +192,8 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 		a.handleExceptionUI(w, r, ac)
 	case r.URL.Path == "/me/agent-grants" || r.URL.Path == "/me/agent-grants/":
 		a.handleAgentGrantsUI(w, r, ac)
+	case r.URL.Path == "/admin/users" || r.URL.Path == "/admin/users/":
+		a.handleAdminUsersUI(w, r, ac)
 	case r.URL.Path == "/admin/keys" || r.URL.Path == "/admin/keys/":
 		a.handleAdminStubUI(w, r, ac, "keys")
 	case r.URL.Path == "/admin/backups" || r.URL.Path == "/admin/backups/":
@@ -207,20 +215,6 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *App) handleIntakeQueueUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	ctx := authz.WithContext(r.Context(), ac)
-	var items []store.Intake
-	if a.Store != nil && ac.Valid() {
-		items, _ = a.Store.ListIntakes(ctx)
-	}
-	data := map[string]any{
-		"Title": "Intake queue", "User": ac.PrincipalID, "Items": items,
-	}
-	if err := a.Templates.ExecuteTemplate(w, "intakes.tmpl", data); err != nil {
-		writeProblem(w, 500, "error", "template render failed")
-	}
-}
-
 func (a *App) handleAnswerLibraryUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	ctx := authz.WithContext(r.Context(), ac)
 	vendorID := r.URL.Query().Get("vendor_id")
@@ -229,7 +223,26 @@ func (a *App) handleAnswerLibraryUI(w http.ResponseWriter, r *http.Request, ac a
 		vendors []store.Vendor
 		vname   string
 	)
-	if a.Store != nil && ac.Valid() {
+	if r.Method == http.MethodPost {
+		_ = r.ParseForm()
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "answer_library", ID: "*"}) {
+			return
+		}
+		entry := store.AnswerLibraryEntry{
+			VendorID: r.FormValue("vendor_id"), QuestionKey: r.FormValue("question_key"),
+			AnswerJSON: r.FormValue("answer_json"), UpdatedBy: ac.PrincipalID,
+		}
+		if entry.AnswerJSON == "" {
+			entry.AnswerJSON = `""`
+		}
+		if _, err := a.Store.UpsertAnswerLibrary(ctx, entry); err != nil {
+			writeProblem(w, 400, "bad_request", err.Error())
+			return
+		}
+		http.Redirect(w, r, "/answer-library?vendor_id="+urlQueryEscape(entry.VendorID), http.StatusSeeOther)
+		return
+	}
+	if a.Store != nil && ac.Authenticated() {
 		vendors, _ = a.Store.ListVendors(ctx)
 		if vendorID != "" {
 			entries, _ = a.Store.ListAnswerLibrary(ctx, vendorID)
@@ -238,13 +251,20 @@ func (a *App) handleAnswerLibraryUI(w http.ResponseWriter, r *http.Request, ac a
 			}
 		}
 	}
+	canWrite := ac.HasRole("risk_analyst") || ac.HasRole("tprm_program_manager") || ac.HasRole("relationship_owner")
 	data := map[string]any{
-		"Title": "Answer library", "User": ac.PrincipalID,
+		"Title": "Answer library", "User": ac.PrincipalID, "Roles": ac.Roles,
 		"VendorID": vendorID, "VendorName": vname, "Entries": entries, "Vendors": vendors,
+		"CanWrite": canWrite, "CSRFToken": a.csrfForRequest(r),
+		"IsAdmin": ac.HasRole("security_administrator") || ac.HasRole("system_administrator"),
 	}
 	if err := a.Templates.ExecuteTemplate(w, "answer_library.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
 	}
+}
+
+func urlQueryEscape(s string) string {
+	return url.QueryEscape(s)
 }
 
 func (a *App) csrfForRequest(r *http.Request) string {
@@ -271,66 +291,91 @@ func (a *App) handleExceptionUI(w http.ResponseWriter, r *http.Request, ac authz
 	path := strings.TrimPrefix(r.URL.Path, "/exceptions/")
 	path = strings.Trim(path, "/")
 
-	if r.Method == http.MethodPost && strings.HasSuffix(path, ":approve") {
-		if ac.PrincipalType == authz.PrincipalAgent {
-			writeProblem(w, 403, "forbidden", "agents cannot approve")
-			return
-		}
-		id := strings.TrimSuffix(path, ":approve")
-		if !a.authorize(w, ac, authz.ActionExceptionApprove, authz.Resource{Type: "exception", ID: id}) {
-			return
-		}
-		if a.Store == nil || a.Keyring == nil {
-			writeProblem(w, 503, "unavailable", "store unavailable")
-			return
-		}
-		residual := r.FormValue("residual_rating")
-		if residual == "" {
-			residual = "high"
-		}
-		conds := []string{}
-		if c := strings.TrimSpace(r.FormValue("conditions")); c != "" {
-			conds = append(conds, c)
-		}
-		payload := exception.Payload{
-			ExceptionID:    id,
-			ApproverID:     ac.PrincipalID,
-			ResidualRating: residual,
-			Conditions:     conds,
-			DecidedAt:      time.Now().UTC(),
-			EvidenceHashes: []string{},
-		}
-		body, err := payload.CanonicalJSON()
-		if err != nil {
-			writeProblem(w, 500, "error", "canonical failed")
-			return
-		}
-		sig, err := a.Keyring.SignEd25519(body)
-		if err != nil {
-			writeProblem(w, 500, "error", "sign failed")
-			return
-		}
-		sigHex := hex.EncodeToString(sig)
-		_, err = a.Store.ApproveException(ctx, id, ac.PrincipalID, payload, sigHex)
-		if err != nil {
-			status := 422
-			if err == store.ErrSOD2RequesterApprover {
-				status = 403
+	if r.Method == http.MethodPost {
+		_ = r.ParseForm()
+		if r.FormValue("action") == "create" || (path == "" && r.FormValue("engagement_id") != "") {
+			if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "exception", ID: "*"}) {
+				return
 			}
-			writeProblem(w, status, "approve_failed", err.Error())
+			rec := store.ExceptionRecord{
+				EngagementID: r.FormValue("engagement_id"),
+				Scope:        r.FormValue("scope"),
+				Rationale:    r.FormValue("rationale"),
+				Requester:    ac.PrincipalID,
+				CreatedBy:    ac.PrincipalID,
+				UpdatedBy:    ac.PrincipalID,
+			}
+			if _, err := a.Store.CreateException(ctx, rec); err != nil {
+				writeProblem(w, 400, "bad_request", err.Error())
+				return
+			}
+			http.Redirect(w, r, "/exceptions", http.StatusSeeOther)
 			return
 		}
-		http.Redirect(w, r, "/exceptions", http.StatusSeeOther)
-		return
+		if strings.HasSuffix(path, ":approve") {
+			if ac.PrincipalType == authz.PrincipalAgent {
+				writeProblem(w, 403, "forbidden", "agents cannot approve")
+				return
+			}
+			id := strings.TrimSuffix(path, ":approve")
+			if !a.authorize(w, ac, authz.ActionExceptionApprove, authz.Resource{Type: "exception", ID: id}) {
+				return
+			}
+			if a.Store == nil || a.Keyring == nil {
+				writeProblem(w, 503, "unavailable", "store unavailable")
+				return
+			}
+			residual := r.FormValue("residual_rating")
+			if residual == "" {
+				residual = "high"
+			}
+			conds := []string{}
+			if c := strings.TrimSpace(r.FormValue("conditions")); c != "" {
+				conds = append(conds, c)
+			}
+			payload := exception.Payload{
+				ExceptionID:    id,
+				ApproverID:     ac.PrincipalID,
+				ResidualRating: residual,
+				Conditions:     conds,
+				DecidedAt:      time.Now().UTC(),
+				EvidenceHashes: []string{},
+			}
+			body, err := payload.CanonicalJSON()
+			if err != nil {
+				writeProblem(w, 500, "error", "canonical failed")
+				return
+			}
+			sig, err := a.Keyring.SignEd25519(body)
+			if err != nil {
+				writeProblem(w, 500, "error", "sign failed")
+				return
+			}
+			sigHex := hex.EncodeToString(sig)
+			_, err = a.Store.ApproveException(ctx, id, ac.PrincipalID, payload, sigHex)
+			if err != nil {
+				status := 422
+				if err == store.ErrSOD2RequesterApprover {
+					status = 403
+				}
+				writeProblem(w, status, "approve_failed", err.Error())
+				return
+			}
+			http.Redirect(w, r, "/exceptions", http.StatusSeeOther)
+			return
+		}
 	}
 
 	var items []store.ExceptionRecord
-	if a.Store != nil && ac.Valid() {
+	if a.Store != nil && ac.Authenticated() {
 		items, _ = a.Store.ListExceptions(ctx, "")
 	}
+	canWrite := ac.HasRole("risk_analyst") || ac.HasRole("tprm_program_manager") || ac.HasRole("relationship_owner")
 	data := map[string]any{
-		"Title": "Exceptions", "User": ac.PrincipalID, "Items": items, "CanApprove": ac.HasRole("approver"),
+		"Title": "Exceptions", "User": ac.PrincipalID, "Roles": ac.Roles, "Items": items,
+		"CanApprove": ac.HasRole("approver"), "CanWrite": canWrite,
 		"CSRFToken": a.csrfForRequest(r),
+		"IsAdmin":   ac.HasRole("security_administrator") || ac.HasRole("system_administrator"),
 	}
 	if err := a.Templates.ExecuteTemplate(w, "exceptions.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
@@ -357,7 +402,7 @@ func (a *App) handleAgentGrantsUI(w http.ResponseWriter, r *http.Request, ac aut
 	}
 
 	var items []store.AgentClient
-	if a.Store != nil && ac.Valid() {
+	if a.Store != nil && ac.Authenticated() {
 		all, _ := a.Store.ListAgentClients(ctx)
 		for _, c := range all {
 			if c.OwnerUserID == ac.PrincipalID {
@@ -366,8 +411,9 @@ func (a *App) handleAgentGrantsUI(w http.ResponseWriter, r *http.Request, ac aut
 		}
 	}
 	data := map[string]any{
-		"Title": "My agent grants", "User": ac.PrincipalID, "Items": items,
+		"Title": "My agent grants", "User": ac.PrincipalID, "Roles": ac.Roles, "Items": items,
 		"CSRFToken": a.csrfForRequest(r),
+		"IsAdmin": ac.HasRole("security_administrator") || ac.HasRole("system_administrator"),
 	}
 	if err := a.Templates.ExecuteTemplate(w, "agent_grants.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
@@ -440,12 +486,14 @@ func (a *App) handleChangeRequestUI(w http.ResponseWriter, r *http.Request, ac a
 	}
 
 	var items []store.ChangeRequest
-	if a.Store != nil && ac.Valid() {
+	if a.Store != nil && ac.Authenticated() {
 		items, _ = a.Store.ListChangeRequests(ctx)
 	}
 	data := map[string]any{
-		"Title": "Change requests", "User": ac.PrincipalID, "Items": items, "CanApprove": ac.HasRole("approver"),
-		"CSRFToken": a.csrfForRequest(r),
+		"Title": "Change requests", "User": ac.PrincipalID, "Roles": ac.Roles, "Items": items,
+		"CanApprove": ac.HasRole("approver"),
+		"CSRFToken":  a.csrfForRequest(r),
+		"IsAdmin":    ac.HasRole("security_administrator") || ac.HasRole("system_administrator"),
 	}
 	if err := a.Templates.ExecuteTemplate(w, "change_requests.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")

@@ -2,7 +2,7 @@
 <section class="hero">
   <p class="eyebrow">OPS-003</p>
   <h1>First login</h1>
-  <p class="lede">Consume the one-time bootstrap token from <code>opentprm init</code> to create the Security Administrator and System Administrator accounts. Then enroll a passkey for each user.</p>
+  <p class="lede">Consume the one-time bootstrap token from <code>opentprm init</code> to create the Security Administrator and System Administrator accounts with initial passwords.</p>
 </section>
 <section class="panel">
   <form id="bootstrap-form" class="stack">
@@ -12,13 +12,19 @@
     <label>Security Administrator email
       <input name="security_admin_email" type="email" required>
     </label>
+    <label>Security Administrator password (min 15)
+      <input name="security_admin_password" type="password" required minlength="15" autocomplete="new-password">
+    </label>
     <label>System Administrator email
       <input name="system_admin_email" type="email" required>
+    </label>
+    <label>System Administrator password (min 15)
+      <input name="system_admin_password" type="password" required minlength="15" autocomplete="new-password">
     </label>
     <button type="submit" class="btn">Create admins</button>
   </form>
   <pre id="bootstrap-result" class="muted" hidden></pre>
-  <p class="note">Token is single-use and expires one hour after init. Emails must differ. After success, call WebAuthn enroll begin/finish for each returned <code>user_id</code> (browser attestation UI is still maturing — API path works today).</p>
+  <p class="note">Token is single-use and expires one hour after init. Emails must differ. After success, sign in at <a href="/login">/login</a>. Optionally enroll a passkey for step-up after you have a session.</p>
 </section>
 <script src="/static/bootstrap.js"></script>
 {{template "footer" .}}{{end}}

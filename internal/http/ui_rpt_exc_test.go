@@ -44,6 +44,7 @@ func testApp(t *testing.T) (*httpserver.App, http.Handler) {
 	app := &httpserver.App{
 		Cfg: cfg, Keyring: kr, Store: st, PDP: pdp, AllowDevHeaders: true, SealedMode: false,
 		Idempotency: httpserver.NewIdempotencyStore(0),
+		Sessions:    authn.NewSessionStore(st.DB()),
 	}
 	return app, app.NewServer().Handler
 }
