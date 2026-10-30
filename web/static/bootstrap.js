@@ -5,8 +5,11 @@
   form.addEventListener("submit", async function (ev) {
     ev.preventDefault();
     var fd = new FormData(form);
+    var btn = form.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
     out.hidden = false;
-    out.textContent = "Submitting…";
+    out.textContent = "Creating administrators…";
+    out.classList.remove("error");
     try {
       var res = await fetch("/api/v1/auth/bootstrap", {
         method: "POST",
@@ -20,12 +23,23 @@
         })
       });
       var text = await res.text();
-      out.textContent = res.status + "\n" + text;
+      var data = null;
+      try { data = JSON.parse(text); } catch (_) {}
       if (res.status === 201) {
-        out.textContent += "\n\nNext: open /login with either admin email and password.";
+        var email = fd.get("security_admin_email") || "";
+        var next = "/login?bootstrap=1&email=" + encodeURIComponent(email);
+        out.textContent = "Administrators created. Redirecting to sign in…";
+        window.location.assign(next);
+        return;
       }
+      out.classList.add("error");
+      var detail = (data && (data.detail || data.title)) || text;
+      out.textContent = "Could not complete bootstrap (" + res.status + "): " + detail;
+      if (btn) btn.disabled = false;
     } catch (e) {
+      out.classList.add("error");
       out.textContent = String(e);
+      if (btn) btn.disabled = false;
     }
   });
 })();

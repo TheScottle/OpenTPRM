@@ -54,7 +54,12 @@ func (a *App) handleLoginUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := r.URL.Query().Get("next")
-	data := map[string]any{"Title": "Sign in", "Next": next}
+	data := map[string]any{
+		"Title":        "Sign in",
+		"Next":         next,
+		"Email":        r.URL.Query().Get("email"),
+		"BootstrapOK":  r.URL.Query().Get("bootstrap") == "1",
+	}
 	if err := a.Templates.ExecuteTemplate(w, "login.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
 	}

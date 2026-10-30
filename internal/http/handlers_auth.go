@@ -97,7 +97,8 @@ func (a *App) handleBootstrapConsume(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, map[string]any{
 		"security_administrator_id": secID,
 		"system_administrator_id":   sysID,
-		"next":                      "sign in at /login with email and password; optionally enroll a passkey for step-up",
+		"login_url":                 "/login?bootstrap=1",
+		"next":                      "sign in at /login with either administrator email and the password you just set",
 	})
 }
 

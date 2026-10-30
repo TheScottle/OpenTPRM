@@ -40,7 +40,16 @@ TLS uses the self-signed cert from `init` unless you replaced it.
 7. Optional: enroll a passkey (session required) via  
    `POST /api/v1/auth/webauthn/enroll/begin` then `/finish` for step-up on approvals/exports.
 
-After bootstrap succeeds, `/bootstrap` redirects to `/login`.
+After bootstrap succeeds, the page **redirects to `/login`** with your security admin email prefilled. Sign in with either admin email and the password you just set.
+
+If you already completed an older bootstrap (emails only, no passwords) and see a JSON blob about enrolling passkeys, that install predates password login. Redeploy the build that includes `/login`, then set passwords once:
+
+```bash
+opentprm passwd --config /etc/opentprm/config.yaml --email sec@example.com --password-file /run/secrets/sec_admin_password
+opentprm passwd --config /etc/opentprm/config.yaml --email sys@example.com --password-file /run/secrets/sys_admin_password
+```
+
+Then open `/login`. Do **not** re-run bootstrap (the token is already consumed).
 
 ## Day-to-day authentication
 

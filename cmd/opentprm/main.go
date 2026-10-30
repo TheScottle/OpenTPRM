@@ -63,6 +63,8 @@ func main() {
 		err = cmdBackup(log, os.Args[2:])
 	case "restore":
 		err = cmdRestore(log, os.Args[2:])
+	case "passwd":
+		err = cmdPasswd(log, os.Args[2:])
 	case "version":
 		fmt.Println(version)
 	default:
@@ -78,7 +80,7 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `OpenTPRM %s
 Usage: opentprm <command> [flags]
-Commands: serve | init | unseal | audit | healthcheck | sandbox | backup | restore | version
+Commands: serve | init | unseal | audit | healthcheck | sandbox | backup | restore | passwd | version
 `, version)
 }
 
@@ -214,6 +216,9 @@ func cmdInit(log *slog.Logger, args []string) error {
 	if err := os.MkdirAll(filepath.Dir(*outKey), 0o700); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(*tlsDir, 0o700); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
 		return err
 	}
@@ -289,6 +294,66 @@ func writeSelfSigned(certFile, keyFile string) (string, error) {
 	}
 	sum := fmt.Sprintf("%x", der[:16])
 	return sum, nil
+}
+
+// cmdPasswd sets a workforce user's password (recovery for pre-password bootstrap installs).
+func cmdPasswd(log *slog.Logger, args []string) error {
+	fs := flag.NewFlagSet("passwd", flag.ContinueOnError)
+	cfgPath := fs.String("config", "/etc/opentprm/config.yaml", "config path")
+	email := fs.String("email", "", "user email")
+	passFile := fs.String("password-file", "", "path to password file (0400); stdin if empty")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*email) == "" {
+		return fmt.Errorf("--email required")
+	}
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			cfg = config.Default()
+		} else {
+			return err
+		}
+	}
+	if cfg.Keys.MasterKeyFile == "" {
+		return fmt.Errorf("keys.master_key_file required")
+	}
+	kr := crypto.NewSealed()
+	if err := kr.UnsealFromFile(cfg.Keys.MasterKeyFile); err != nil {
+		return err
+	}
+	st, err := store.Open(cfg.Storage.DataDir, kr)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	var pass string
+	if *passFile != "" {
+		b, err := os.ReadFile(*passFile)
+		if err != nil {
+			return err
+		}
+		pass = strings.TrimSpace(string(b))
+	} else {
+		fmt.Fprint(os.Stderr, "New password (≥15 chars): ")
+		var line string
+		if _, err := fmt.Fscanln(os.Stdin, &line); err != nil {
+			return err
+		}
+		pass = strings.TrimSpace(line)
+	}
+	u, _, err := authn.GetUserByEmail(context.Background(), st.DB(), *email)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+	if err := authn.SetUserPassword(context.Background(), st.DB(), u.ID, pass, u.Email, "cli:passwd", false); err != nil {
+		return err
+	}
+	log.Info("password updated", "email", u.Email, "user_id", u.ID)
+	fmt.Fprintf(os.Stdout, "Password set for %s. Sign in at /login.\n", u.Email)
+	return nil
 }
 
 func cmdAudit(log *slog.Logger, args []string) error {

@@ -29,7 +29,7 @@ permit (
   action in [Action::"vendor:read", Action::"engagement:read", Action::"assessment:read", Action::"finding:read"],
   resource
 )
-when { principal.roles.contains("risk_analyst") || principal.roles.contains("tprm_program_manager") || principal.roles.contains("approver") || principal.roles.contains("auditor") || principal.roles.contains("viewer") };
+when { principal.roles.contains("risk_analyst") || principal.roles.contains("tprm_program_manager") || principal.roles.contains("approver") || principal.roles.contains("auditor") || principal.roles.contains("viewer") || principal.roles.contains("security_administrator") || principal.roles.contains("system_administrator") };
 
 permit (
   principal is User,

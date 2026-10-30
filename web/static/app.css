@@ -116,6 +116,7 @@ code { font-size: 0.9em; }
 .stack button { align-self: flex-start; border: 0; cursor: pointer; }
 .stack-tight { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-top: 0.35rem; }
 .error { color: #8b2e2e; background: #f7e8e8; padding: 0.6rem 0.75rem; margin: 0 0 1rem; }
+.ok { color: #0f5c4c; background: #e7f3ef; padding: 0.6rem 0.75rem; margin: 0 0 1rem; }
 .note { color: var(--muted); font-size: 0.9rem; margin-top: 1rem; }
 .muted { color: var(--muted); white-space: pre-wrap; font-size: 0.85rem; }
 .user a { color: var(--accent); }

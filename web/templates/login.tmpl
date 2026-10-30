@@ -5,17 +5,18 @@
   <p class="lede">Use your OpenTPRM email and password. Passkeys are used for step-up on sensitive actions after login.</p>
 </section>
 <section class="panel">
+  {{if .BootstrapOK}}<p class="ok">Administrators created. Sign in with either admin email and the password you set during bootstrap.</p>{{end}}
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   <form method="POST" action="/login" class="stack">
     <input type="hidden" name="next" value="{{.Next}}">
     <label>Email
-      <input name="email" type="email" autocomplete="username" required>
+      <input name="email" type="email" autocomplete="username" required value="{{.Email}}">
     </label>
     <label>Password
       <input name="password" type="password" autocomplete="current-password" required minlength="15">
     </label>
     <button type="submit" class="btn">Sign in</button>
   </form>
-  <p class="note">First install? Complete <a href="/bootstrap">bootstrap</a> with the one-time token from <code>opentprm init</code>.</p>
+  <p class="note">First install? Complete <a href="/bootstrap">bootstrap</a> with the one-time token from <code>opentprm init</code> (includes setting both admin passwords).</p>
 </section>
 {{template "footer" .}}{{end}}
