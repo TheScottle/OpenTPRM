@@ -57,6 +57,18 @@ func (a *App) handleIntakes(w http.ResponseWriter, r *http.Request, ac authz.Con
 		writeJSON(w, 200, map[string]any{"intake": in, "tier": result.Tier, "score": result.Score, "plan": plan, "floors": result.FloorsApplied})
 		return
 	}
+	if r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "intake", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListIntakes(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+		return
+	}
 	if r.Method == http.MethodPost {
 		if !a.authorize(w, ac, authz.ActionEngagementWrite, authz.Resource{Type: "intake", ID: "*"}) {
 			return
@@ -1331,6 +1343,28 @@ func (a *App) handleLegalHolds(w http.ResponseWriter, r *http.Request, ac authz.
 }
 
 func (a *App) handleSuggestions(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.HasSuffix(path, ":accept") && r.Method == http.MethodPost {
+		id := extractID(r.URL.Path, "/api/v1/suggestions/", ":accept")
+		if !a.authorize(w, ac, authz.ActionChangeRequestApprove, authz.Resource{Type: "suggestion", ID: id}) {
+			return
+		}
+		var body struct {
+			SourceText string `json:"source_text"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
+		got, err := a.Store.AcceptSuggestion(r.Context(), id, body.SourceText, ac.PrincipalID)
+		if err != nil {
+			status := 422
+			if errors.Is(err, ai.ErrUnverifiedCitation) || errors.Is(err, ai.ErrMissingSourceText) {
+				status = 409
+			}
+			writeProblem(w, status, "accept_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "suggestion", ID: "*"}) {
@@ -1384,9 +1418,20 @@ func (a *App) handleChangeRequests(w http.ResponseWriter, r *http.Request, ac au
 		if !a.authorize(w, ac, authz.ActionChangeRequestApprove, authz.Resource{Type: "change_request", ID: id}) {
 			return
 		}
-		got, err := a.Store.DecideChangeRequest(r.Context(), id, decision, ac.PrincipalID)
+		var body struct {
+			CurrentETag string `json:"current_etag"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
+		if body.CurrentETag == "" {
+			body.CurrentETag = r.Header.Get("If-Match")
+		}
+		got, err := a.Store.DecideChangeRequest(r.Context(), id, decision, ac.PrincipalID, body.CurrentETag)
 		if err != nil {
-			writeProblem(w, 422, "decide_failed", err.Error())
+			status := 422
+			if errors.Is(err, store.ErrStaleChangeRequest) {
+				status = 409
+			}
+			writeProblem(w, status, "decide_failed", err.Error())
 			return
 		}
 		writeJSON(w, 200, got)
@@ -1630,6 +1675,15 @@ func (w storeSuggestionWriter) CreateSuggestion(ctx context.Context, kind string
 	}, nil
 }
 
+func (w storeSuggestionWriter) WriteCallLog(ctx context.Context, endpointID, modelDigest, templateHash, inputHash, outputHash, principal string, tokens, latencyMs int) error {
+	_, err := w.app.Store.InsertAICallLog(ctx, store.AICallLog{
+		EndpointID: endpointID, ModelDigest: modelDigest, TemplateHash: templateHash,
+		InputHash: inputHash, OutputHash: outputHash, Principal: principal,
+		Tokens: tokens, LatencyMs: latencyMs,
+	})
+	return err
+}
+
 func (a *App) handleAIJobs(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	if r.Method != http.MethodPost {
 		writeProblem(w, 405, "method_not_allowed", "POST required")
@@ -1643,7 +1697,11 @@ func (a *App) handleAIJobs(w http.ResponseWriter, r *http.Request, ac authz.Cont
 		writeProblem(w, 400, "bad_request", "invalid json")
 		return
 	}
-	res, err := ai.RunSuggestJob(r.Context(), a.Cfg.AIAssist.Enabled, storeSuggestionWriter{app: a, ac: ac}, body)
+	if body.Principal == "" {
+		body.Principal = ac.PrincipalID
+	}
+	writer := storeSuggestionWriter{app: a, ac: ac}
+	res, err := ai.RunSuggestJobWithLog(r.Context(), a.Cfg.AIAssist.Enabled, writer, writer, body)
 	if err != nil {
 		status := 422
 		if errors.Is(err, ai.ErrAssistDisabled) {

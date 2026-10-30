@@ -1,0 +1,25 @@
+{{define "intakes.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>Intake queue</h1>
+  <p class="lede">Analyst view of intake submissions awaiting triage and tiering.</p>
+  {{if .Items}}
+  <table class="list">
+    <thead><tr><th>ID</th><th>Engagement</th><th>Status</th><th>Tier</th><th>Score</th><th>Created by</th></tr></thead>
+    <tbody>
+    {{range .Items}}
+      <tr>
+        <td><code>{{.ID}}</code></td>
+        <td><code>{{.EngagementID}}</code></td>
+        <td>{{.Status}}</td>
+        <td>{{.Tier}}</td>
+        <td>{{printf "%.1f" .WeightedScore}}</td>
+        <td>{{.CreatedBy}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No intakes in the queue. Submit via <code>POST /api/v1/intakes</code>.</p>
+  {{end}}
+</section>
+{{template "footer" .}}{{end}}

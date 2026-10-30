@@ -34,17 +34,24 @@
 | AI-032 | `TestAI_032_BudgetWiredOnGateway` |
 | AI model registry | `TestAI_ModelEndpointHTTPCRUD` |
 | AI job suggestions-only | `TestAI_JobStubCreatesSuggestionsOnly` |
+| AI-064 citations on accept | `TestAI_AcceptRequiresVerifiedCitations`, `TestAI_AcceptSuggestionCitationPath`, `TestAI_SuggestionAcceptCitationHTTP` |
+| AI call logs | `TestAI_CallLogWrites` |
+| AI-071 / AT-04 eval harness | `TestAT_04_EvalHarnessInjectionZeroTolerance`, `TestAT_04_InjectionNotObeyed` |
 | UI analyst home | `TestUI_AnalystHomeAndVendors` |
+| UI intake queue | `TestUI_IntakeAnalystQueue` |
 | POR-002 magic-link | `TestPOR_002_MagicLinkIssueConsume` |
 | POR vendor questionnaires | `TestPOR_VendorQuestionnaireListScoped` |
 | Portal listener | `TestPortalEnabledWiresListener` |
 | AT-02 | `TestAT_02_RestrictedRecord404Semantics` |
 | AT-03 | `TestAT_03_NoApproveToolListed` |
 | AT-09 | `TestAT_09_HeaderBodyNameMismatch` |
-| AT-05 / AT-06 | `TestAT_05_ChangeRequestApprovalUI` / `TestAT_06_*` (dual-control still open) |
+| AT-05 / AT-06 | `TestAT_05_ChangeRequestApprovalUI`, `TestAT_06_StaleChangeRequestRefused`, `TestAT_06_StaleChangeRequestHTTP`, `TestAT_06_DecideChangeRequestStaleAndSOD` |
+| MCP initialize/discover | `TestMCP_InitializeAndDiscoverConformance`, `TestMCP_ToolsListShape` |
+| OAuth refresh reuse | `TestOAuth_RefreshRotateAndReuseDetect` |
+| OAuth mTLS client-cred stub | `TestOAuth_MTLSClientCredentialsStub` |
 | AT-13 / GEN-014 | `TestAT_13_*` / `TestGEN_014_*` |
 | AT-12 | `TestAT_12_DisabledConnectorBlocked` |
-| AT-04 | `TestAT_04_InjectionNotObeyed` + evidence detectors |
+| AT-04 | `TestAT_04_InjectionNotObeyed`, `TestAT_04_EvalHarnessInjectionZeroTolerance` + evidence detectors |
 | SEC-AN-004 | `TestSEC_AN_004_SessionHashedIdleAbsolute` |
 | SEC-AN-005 | `TestSEC_AN_005_LogoutRevokes` |
 | SEC-AN-003 | `TestSEC_AN_003_StepUpWindow`, `TestSEC_AN_006_WebAuthnEnrollLoginStepUp` |

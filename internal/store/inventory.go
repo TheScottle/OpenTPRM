@@ -494,6 +494,28 @@ func (s *Store) GetIntake(ctx context.Context, id string) (Intake, error) {
 	return in, err
 }
 
+// ListIntakes returns intakes for the analyst queue (newest first).
+func (s *Store) ListIntakes(ctx context.Context) ([]Intake, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, engagement_id, answers_json, factor_scores_json, weighted_score, tier, plan_json, status, created_by, updated_by
+		FROM intakes ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Intake
+	for rows.Next() {
+		var in Intake
+		if err := rows.Scan(&in.ID, &in.EngagementID, &in.AnswersJSON, &in.FactorScoresJSON, &in.WeightedScore, &in.Tier, &in.PlanJSON, &in.Status, &in.CreatedBy, &in.UpdatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, in)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) UpdateIntake(ctx context.Context, in Intake) error {
 	if _, err := RequireAuthz(ctx); err != nil {
 		return err

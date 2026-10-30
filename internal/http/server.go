@@ -170,12 +170,28 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 		}
 	case r.URL.Path == "/change-requests" || r.URL.Path == "/change-requests/":
 		a.handleChangeRequestUI(w, r, ac)
+	case r.URL.Path == "/intakes" || r.URL.Path == "/intakes/":
+		a.handleIntakeQueueUI(w, r, ac)
 	default:
 		if strings.HasPrefix(r.URL.Path, "/change-requests/") {
 			a.handleChangeRequestUI(w, r, ac)
 			return
 		}
 		http.NotFound(w, r)
+	}
+}
+
+func (a *App) handleIntakeQueueUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	ctx := authz.WithContext(r.Context(), ac)
+	var items []store.Intake
+	if a.Store != nil && ac.Valid() {
+		items, _ = a.Store.ListIntakes(ctx)
+	}
+	data := map[string]any{
+		"Title": "Intake queue", "User": ac.PrincipalID, "Items": items,
+	}
+	if err := a.Templates.ExecuteTemplate(w, "intakes.tmpl", data); err != nil {
+		writeProblem(w, 500, "error", "template render failed")
 	}
 }
 
@@ -203,9 +219,17 @@ func (a *App) handleChangeRequestUI(w http.ResponseWriter, r *http.Request, ac a
 			writeProblem(w, 503, "unavailable", "store unavailable")
 			return
 		}
-		_, err := a.Store.DecideChangeRequest(ctx, id, decision, ac.PrincipalID)
+		currentETag := r.FormValue("current_etag")
+		if currentETag == "" {
+			currentETag = r.Header.Get("If-Match")
+		}
+		_, err := a.Store.DecideChangeRequest(ctx, id, decision, ac.PrincipalID, currentETag)
 		if err != nil {
-			writeProblem(w, 422, "decide_failed", err.Error())
+			status := 422
+			if err == store.ErrStaleChangeRequest {
+				status = 409
+			}
+			writeProblem(w, status, "decide_failed", err.Error())
 			return
 		}
 		http.Redirect(w, r, "/change-requests", http.StatusSeeOther)

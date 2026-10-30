@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/TheScottle/OpenTPRM/internal/ai"
 	"github.com/google/uuid"
 )
 
@@ -276,6 +279,46 @@ func (s *Store) ListSuggestions(ctx context.Context) ([]Suggestion, error) {
 	return out, rows.Err()
 }
 
+// GetSuggestion loads one AI suggestion.
+func (s *Store) GetSuggestion(ctx context.Context, id string) (Suggestion, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return Suggestion{}, err
+	}
+	var sug Suggestion
+	err := s.db.QueryRowContext(ctx, `SELECT id, engagement_id, kind, payload_json, citations_json, status, agent_client_id, delegator_id, created_at, classification
+		FROM ai_suggestions WHERE id=?`, id).
+		Scan(&sug.ID, &sug.EngagementID, &sug.Kind, &sug.PayloadJSON, &sug.CitationsJSON, &sug.Status, &sug.AgentClientID, &sug.DelegatorID, &sug.CreatedAt, &sug.Classification)
+	return sug, err
+}
+
+// AcceptSuggestion verifies citations against source text then marks accepted (AI-064).
+func (s *Store) AcceptSuggestion(ctx context.Context, id, sourceText, actor string) (Suggestion, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return Suggestion{}, err
+	}
+	sug, err := s.GetSuggestion(ctx, id)
+	if err != nil {
+		return Suggestion{}, err
+	}
+	var cites []ai.Citation
+	if sug.CitationsJSON != "" && sug.CitationsJSON != "[]" {
+		if err := json.Unmarshal([]byte(sug.CitationsJSON), &cites); err != nil {
+			return Suggestion{}, fmt.Errorf("citations_json: %w", err)
+		}
+	}
+	if err := ai.PrepareAccept(sug.Status, cites, sourceText); err != nil {
+		return Suggestion{}, err
+	}
+	now := nowUTC()
+	_, err = s.db.ExecContext(ctx, `UPDATE ai_suggestions SET status=?, accepted_by=?, accepted_at=? WHERE id=?`,
+		"accepted", actor, now, id)
+	if err != nil {
+		return Suggestion{}, err
+	}
+	sug.Status = "accepted"
+	return sug, nil
+}
+
 // CreateChangeRequest inserts a change request.
 func (s *Store) CreateChangeRequest(ctx context.Context, cr ChangeRequest) (ChangeRequest, error) {
 	if _, err := RequireAuthz(ctx); err != nil {
@@ -335,8 +378,12 @@ func (s *Store) GetChangeRequest(ctx context.Context, id string) (ChangeRequest,
 	return cr, err
 }
 
+// ErrStaleChangeRequest is AT-06: target changed under a pending CR.
+var ErrStaleChangeRequest = errors.New("change request stale: target ETag mismatch")
+
 // DecideChangeRequest approves or rejects a pending change request (humans only; SOD vs requester).
-func (s *Store) DecideChangeRequest(ctx context.Context, id, decision, actor string) (ChangeRequest, error) {
+// When the CR has a TargetETag, currentETag must match (AT-06). Dual-control: actor ≠ delegator.
+func (s *Store) DecideChangeRequest(ctx context.Context, id, decision, actor, currentETag string) (ChangeRequest, error) {
 	if _, err := RequireAuthz(ctx); err != nil {
 		return ChangeRequest{}, err
 	}
@@ -349,6 +396,12 @@ func (s *Store) DecideChangeRequest(ctx context.Context, id, decision, actor str
 	}
 	if cr.DelegatorID != "" && cr.DelegatorID == actor {
 		return ChangeRequest{}, fmt.Errorf("SOD: requester cannot decide own change request")
+	}
+	if cr.AgentClientID != "" && cr.AgentClientID == actor {
+		return ChangeRequest{}, fmt.Errorf("SOD: agent client cannot decide change request")
+	}
+	if cr.TargetETag != "" && currentETag != cr.TargetETag {
+		return ChangeRequest{}, ErrStaleChangeRequest
 	}
 	switch decision {
 	case "approved", "rejected":

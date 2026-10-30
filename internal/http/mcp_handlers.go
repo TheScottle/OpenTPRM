@@ -163,6 +163,12 @@ func (a *App) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 
 	switch grant {
 	case "client_credentials":
+		if as.RequireMTLSForClientCredentials {
+			if _, err := authn.RequireClientCertificate(r, true); err != nil {
+				writeJSON(w, 401, map[string]any{"error": "invalid_client", "error_description": err.Error()})
+				return
+			}
+		}
 		clientID := r.FormValue("client_id")
 		if clientID == "" {
 			clientID = "dev-client"
@@ -185,6 +191,7 @@ func (a *App) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, status, map[string]any{"error": "invalid_request", "error_description": err.Error()})
 			return
 		}
+		// AI-025: autonomous client_credentials get no refresh tokens.
 		writeJSON(w, 200, map[string]any{
 			"access_token": issued.AccessToken,
 			"token_type":   issued.TokenType,
@@ -206,11 +213,45 @@ func (a *App) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]any{"error": "invalid_request", "error_description": err.Error()})
 			return
 		}
-		writeJSON(w, 200, map[string]any{
+		resp := map[string]any{
 			"access_token": issued.AccessToken,
 			"token_type":   issued.TokenType,
 			"expires_in":   issued.ExpiresIn,
 			"scope":        issued.Scope,
+		}
+		if as.Refresh != nil {
+			rt, _, rerr := as.Refresh.Issue(ac.ClientID, ac.UserID, ac.Audience, dpopThumb, ac.Scopes)
+			if rerr == nil {
+				resp["refresh_token"] = rt
+			}
+		}
+		writeJSON(w, 200, resp)
+	case "refresh_token":
+		if as.Refresh == nil {
+			writeJSON(w, 400, map[string]any{"error": "unsupported_grant_type"})
+			return
+		}
+		rt := r.FormValue("refresh_token")
+		newRT, grant, err := as.Refresh.Rotate(rt)
+		if err != nil {
+			status := 400
+			if err == authn.ErrRefreshReuse || err == authn.ErrRefreshRevoked {
+				status = 401
+			}
+			writeJSON(w, status, map[string]any{"error": "invalid_grant", "error_description": err.Error()})
+			return
+		}
+		issued, err := as.IssueOpaqueAccessToken(grant.ClientID, grant.UserID, grant.Audience, grant.Scopes, dpopThumb)
+		if err != nil {
+			writeJSON(w, 400, map[string]any{"error": "invalid_request", "error_description": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"access_token":  issued.AccessToken,
+			"token_type":    issued.TokenType,
+			"expires_in":    issued.ExpiresIn,
+			"scope":         issued.Scope,
+			"refresh_token": newRT,
 		})
 	default:
 		writeJSON(w, 400, map[string]any{"error": "unsupported_grant_type"})

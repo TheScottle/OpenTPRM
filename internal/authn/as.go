@@ -49,7 +49,7 @@ type StoredToken struct {
 
 // AuthorizationServer issues and verifies opaque, hashed access tokens (M6 / AI-023).
 // PKCE + auth codes for pre-registered clients and DPoP proof verify are supported;
-// full fosite/mTLS remain open.
+// refresh rotation + mTLS client-cred stubs are available; full fosite remains open.
 type AuthorizationServer struct {
 	mu     sync.RWMutex
 	tokens map[string]StoredToken
@@ -59,6 +59,9 @@ type AuthorizationServer struct {
 	Clients                 *ClientRegistry
 	Codes                   *AuthCodeStore
 	DPoPNonces              *DPoPNonceStore
+	Refresh                 *RefreshStore
+	// RequireMTLSForClientCredentials enforces peer cert on client_credentials (RFC 8705 stub).
+	RequireMTLSForClientCredentials bool
 	// VerifyDPoPProof when true runs ParseAndVerifyDPoP instead of header-presence stub.
 	VerifyDPoPProof bool
 }
@@ -75,6 +78,7 @@ func NewAuthorizationServer(ttl time.Duration, requireSender bool) *Authorizatio
 		Clients:                 NewClientRegistry(),
 		Codes:                   NewAuthCodeStore(10 * time.Minute),
 		DPoPNonces:              NewDPoPNonceStore(10 * time.Minute),
+		Refresh:                 NewRefreshStore(RefreshTTL),
 		VerifyDPoPProof:         true,
 	}
 }
