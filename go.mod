@@ -6,6 +6,7 @@ toolchain go1.27.3
 
 require (
 	cel.dev/cel-go v0.33.1
+	filippo.io/age v1.3.2
 	github.com/cedar-policy/cedar-go v1.9.0
 	github.com/google/uuid v1.6.0
 	github.com/ncruces/go-sqlite3 v0.36.0
@@ -15,6 +16,7 @@ require (
 
 require (
 	cel.dev/expr v0.25.1 // indirect
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3 // indirect
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.4.35401 // indirect

@@ -1,0 +1,11 @@
+/opentprm
+/data/
+/backup/
+/secrets/
+*.db
+*.db-*
+/dist/
+.idea/
+.vscode/
+*.exe
+coverage.out

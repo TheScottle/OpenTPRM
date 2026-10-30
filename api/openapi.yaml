@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: OpenTPRM API
+  version: 1.0.0
+  description: Self-hosted third-party risk management REST API.
+servers:
+  - url: /api/v1
+paths:
+  /vendors:
+    get:
+      summary: List vendors
+      operationId: listVendors
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create vendor
+      operationId: createVendor
+      responses:
+        "201":
+          description: Created
+  /intakes/{id}:submit:
+    post:
+      summary: Submit intake and compute inherent-risk tier
+      operationId: submitIntake
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Tier and diligence plan
+  /assessments/{id}:transition:
+    post:
+      summary: Transition assessment state machine
+      operationId: transitionAssessment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Updated
+        "422":
+          description: Illegal transition
+  /uploads:
+    post:
+      summary: Upload evidence bytes (quarantine pipeline)
+      operationId: upload
+      responses:
+        "202":
+          description: Accepted
+        "422":
+          description: Rejected
+  /audit/verify:
+    post:
+      summary: Verify audit hash chain
+      operationId: auditVerify
+      responses:
+        "200":
+          description: OK
+        "409":
+          description: Chain broken
+  /agent/tools:
+    get:
+      summary: Agent tool registry (OpenAI function format)
+      operationId: agentTools
+      responses:
+        "200":
+          description: OK

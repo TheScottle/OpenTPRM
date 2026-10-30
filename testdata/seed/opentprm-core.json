@@ -1,0 +1,36 @@
+{
+  "name": "OpenTPRM Core",
+  "kind": "core",
+  "semver": "1.0.0",
+  "provenance": {
+    "source": "Owner-authored for OpenTPRM",
+    "license": "owner_authored",
+    "mapped_frameworks": "NIST CSF 2.0 GV.SC; NIST SP 800-53r5 (NIST-authored references only)",
+    "url": "https://github.com/TheScottle/OpenTPRM"
+  },
+  "sections": [
+    {
+      "id": "gov",
+      "title": "Governance and oversight",
+      "questions": [
+        {
+          "key": "GOV-01",
+          "text": "Does the third party maintain a documented information security policy approved by management?",
+          "type": "yes_no_na",
+          "domain": "GV",
+          "mappings": [{"framework": "NIST-CSF-2.0", "control_id": "GV.OC-01"}],
+          "license": "owner_authored"
+        },
+        {
+          "key": "IAM-03",
+          "text": "Is multi-factor authentication required for privileged access to systems that process firm or client data?",
+          "type": "yes_no_na",
+          "domain": "PR.AA",
+          "scoring": "answers[\"IAM-03\"] == \"yes\" ? 1.0 : 0.0",
+          "criticality": "key",
+          "license": "owner_authored"
+        }
+      ]
+    }
+  ]
+}

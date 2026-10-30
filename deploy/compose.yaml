@@ -1,0 +1,46 @@
+services:
+  opentprm:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: opentprm:local
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./seccomp-opentprm.json
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m
+    volumes:
+      - opentprm-data:/data
+      - opentprm-backup:/backup
+      - ./config.example.yaml:/etc/opentprm/config.yaml:ro
+    secrets:
+      - opentprm_master_key
+      - opentprm_tls_cert
+      - opentprm_tls_key
+    ports:
+      - "127.0.0.1:8443:8443"
+    environment:
+      OPENTPRM_MODE: production
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 2.0
+    ulimits:
+      nofile: { soft: 8192, hard: 8192 }
+      core: 0
+    restart: unless-stopped
+
+volumes:
+  opentprm-data: {}
+  opentprm-backup: {}
+
+secrets:
+  opentprm_master_key:
+    file: ./secrets/master.key
+  opentprm_tls_cert:
+    file: ./secrets/tls.crt
+  opentprm_tls_key:
+    file: ./secrets/tls.key

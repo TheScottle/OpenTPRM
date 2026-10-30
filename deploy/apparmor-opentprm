@@ -1,0 +1,15 @@
+#include <tunables/global>
+
+profile opentprm flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  /usr/local/bin/opentprm ix,
+  /data/** rwk,
+  /backup/** rwk,
+  /tmp/** rwk,
+  /etc/opentprm/** r,
+  /run/secrets/** r,
+  network inet stream,
+  network inet6 stream,
+  deny /proc/sys/** w,
+  deny @{PROC}/sys/kernel/** w,
+}
