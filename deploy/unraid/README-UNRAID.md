@@ -100,7 +100,7 @@ Compose uses Unraid **bridge** networking, read-only rootfs, `cap_drop: ALL`, `n
 ## Config notes
 
 - Example production file: `config.unraid.yaml` (portal **off** by default, listen `0.0.0.0:8443`).
-- After first start, set `server.public_base_url` to your LAN URL (e.g. `https://192.168.1.50:8443`).
+- Before first login, set `server.public_base_url` to the **exact** URL you open in the browser (e.g. `https://192.168.1.50:8443`). This is required for CSRF/Origin checks on `/login` and `/bootstrap`. Do not leave `0.0.0.0`.
 - Keep the vendor portal disabled until a reverse proxy and `trusted_proxies` are configured.
 - Operator checklist: [`docs/handbook/operator.md`](../../docs/handbook/operator.md).
 - First login / sealed vs ready: [`docs/handbook/first-login.md`](../../docs/handbook/first-login.md).

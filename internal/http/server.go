@@ -122,13 +122,15 @@ func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// CSRF + Origin checks for cookie sessions on state-changing methods (SEC-WEB / SEC-AZ-001).
-		if a.Sessions != nil && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			// Pass full Host (may include :8443) so Origin port matching works for Unraid / local smoke.
-			if authn.CheckOriginRejectsCrossSite(r, r.Host) {
+		// CSRF + Origin checks on state-changing methods (SEC-WEB / SEC-AZ-001).
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			// Allow browser Origin against request Host and configured public_base_url (Unraid LAN URL).
+			if authn.CheckOriginRejectsCrossSite(r, a.originAllowedHosts(r)...) {
 				writeProblem(w, http.StatusForbidden, "csrf", "cross-site request rejected")
 				return
 			}
+		}
+		if a.Sessions != nil && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
 			if c, err := r.Cookie(authn.SessionCookie); err == nil && c.Value != "" {
 				sess, err := a.Sessions.LookupByID(r.Context(), c.Value)
 				if err == nil {
@@ -532,6 +534,29 @@ func (a *App) handleAPI(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeProblem(w, http.StatusNotFound, "not_found", "not found")
 	}
+}
+
+// originAllowedHosts returns Host values that may appear in browser Origin for CSRF checks.
+func (a *App) originAllowedHosts(r *http.Request) []string {
+	out := make([]string, 0, 3)
+	if r != nil && r.Host != "" {
+		out = append(out, r.Host)
+	}
+	if a != nil {
+		if u := strings.TrimSpace(a.Cfg.Server.PublicBaseURL); u != "" {
+			out = append(out, u)
+		}
+	}
+	if r != nil {
+		if xfh := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); xfh != "" {
+			// First value only; used when a reverse proxy preserves the external host.
+			if i := strings.IndexByte(xfh, ','); i >= 0 {
+				xfh = strings.TrimSpace(xfh[:i])
+			}
+			out = append(out, xfh)
+		}
+	}
+	return out
 }
 
 func setSecurityHeaders(w http.ResponseWriter) {

@@ -6,10 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
-	"net"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 )
 
@@ -119,63 +116,6 @@ func ValidateCSRF(sess *Session, presented string) error {
 		return ErrCSRFMismatch
 	}
 	return nil
-}
-
-// CheckOriginRejectsCrossSite rejects state-changing requests that fail Origin / Sec-Fetch-Site.
-// allowedHost may be host or host:port (from r.Host); Origin is compared by hostname and,
-// when both sides carry an explicit port, by port (so https://ip:8443 matches Host ip:8443).
-func CheckOriginRejectsCrossSite(r *http.Request, allowedHost string) bool {
-	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-		return false
-	}
-	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs == "cross-site" {
-		return true
-	}
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return false // same-origin navigations may omit Origin
-	}
-	u, err := url.Parse(origin)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return true
-	}
-	originHost := strings.ToLower(u.Hostname())
-	originPort := u.Port()
-	if originPort == "" {
-		if u.Scheme == "https" {
-			originPort = "443"
-		} else {
-			originPort = "80"
-		}
-	}
-
-	wantHost, wantPort := splitHostPort(allowedHost)
-	if wantHost == "" {
-		wantHost, wantPort = splitHostPort(r.Host)
-	}
-	if wantHost == "" {
-		return true
-	}
-	if originHost != strings.ToLower(wantHost) {
-		return true
-	}
-	// When the request Host includes an explicit non-default port (e.g. :8443), require Origin to match it.
-	if wantPort != "" && wantPort != "443" && wantPort != "80" && originPort != wantPort {
-		return true
-	}
-	return false
-}
-
-func splitHostPort(hostport string) (host, port string) {
-	hostport = strings.TrimSpace(hostport)
-	if hostport == "" {
-		return "", ""
-	}
-	if h, p, err := net.SplitHostPort(hostport); err == nil {
-		return h, p
-	}
-	// Bare hostname or IPv6 without port.
-	return hostport, ""
 }
 
 // Alive reports whether the session is within idle and absolute windows.

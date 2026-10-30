@@ -18,8 +18,9 @@ server:
     trusted_proxies: []
   metrics:
     listen: "127.0.0.1:9090"
-  # Set to your LAN URL after deploy, e.g. https://192.168.1.50:8443
-  public_base_url: "https://0.0.0.0:8443"
+  # REQUIRED for browser login/CSRF: the URL you type in the browser (LAN IP or hostname).
+  # Example: https://192.168.1.50:8443 — do not leave this as 0.0.0.0.
+  public_base_url: "https://REPLACE_WITH_LAN_IP:8443"
 keys:
   master_key_file: /run/secrets/opentprm_master_key
 identity:

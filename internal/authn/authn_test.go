@@ -309,13 +309,26 @@ func TestSEC_WEB_CSRF_OriginReject(t *testing.T) {
 		{req{"POST", "same-origin", "https://127.0.0.1:8443"}, "127.0.0.1:8443", false},
 		{req{"POST", "same-origin", "https://127.0.0.1:8443"}, "127.0.0.1", false},
 		{req{"POST", "same-origin", "https://evil.example:8443"}, "127.0.0.1:8443", true},
-		{req{"POST", "same-origin", "https://127.0.0.1:9999"}, "127.0.0.1:8443", true},
+		// Reverse proxy: browser Origin on :443, backend Host :8443 — same hostname + same-origin.
+		{req{"POST", "same-origin", "https://127.0.0.1"}, "127.0.0.1:8443", false},
+		{req{"POST", "same-origin", "https://127.0.0.1:9999"}, "127.0.0.1:8443", false}, // same-origin hint + hostname
+		{req{"POST", "", "https://127.0.0.1:9999"}, "127.0.0.1:8443", false},             // empty SFS treated as same-site hint
 	}
 	for i, c := range cases {
 		r := &httpRequest{method: c.r.Method, sfs: c.r.SFS, origin: c.r.Origin}
 		if got := authn.CheckOriginRejectsCrossSite(r.asHTTP(), c.host); got != c.reject {
 			t.Fatalf("case %d: got %v want %v", i, got, c.reject)
 		}
+	}
+
+	// Docker internal Host + LAN public_base_url allowlist.
+	hr := (&httpRequest{method: "POST", sfs: "same-origin", origin: "https://192.168.1.50:8443"}).asHTTP()
+	hr.Host = "opentprm:8443"
+	if !authn.CheckOriginRejectsCrossSite(hr, "opentprm:8443") {
+		t.Fatal("internal host alone must not accept LAN Origin")
+	}
+	if authn.CheckOriginRejectsCrossSite(hr, "opentprm:8443", "https://192.168.1.50:8443") {
+		t.Fatal("LAN public_base_url must allow browser Origin")
 	}
 }
 
