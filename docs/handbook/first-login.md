@@ -50,12 +50,13 @@ Treat it like a break-glass secret. It is **single-use**: after successful consu
 4. Enter **two different** emails:
    - Security Administrator (keys, agents, policy, audit)
    - System Administrator (platform ops)
-5. Submit. API: `POST /api/v1/auth/bootstrap` with JSON  
-   `{ "token", "security_admin_email", "system_admin_email" }` → **201** and two `user_id`s.
+5. Submit (form uses `/static/bootstrap.js` under CSP `script-src 'self'`). API: `POST /api/v1/auth/bootstrap` with JSON  
+   `{ "token", "security_admin_email", "system_admin_email" }` → **201** and two `user_id`s.  
+   Browser calls send `Origin: https://<host>:8443`; the server matches hostname **and** non-default port (not a cross-site reject).
 6. **Passkey enroll** for each returned id via  
    `POST /api/v1/auth/webauthn/enroll/begin` then `/enroll/finish`  
    (COSE / public-key metadata path). Full browser CTAP attestation UI is still maturing; the API path is what live tests should exercise first.
-7. Subsequent login: `/auth/webauthn/login/begin` + `/finish` (session cookie).
+7. Subsequent login: `/auth/webauthn/login/begin` + `/finish` (session cookie + CSRF token once). HTML approve forms use a rotated `csrf_token` field. WebAuthn **step-up** is persisted on the session (`step_up_at`) so change-request / sensitive export gates survive cookie round-trips.
 
 Dev-only shortcut (never production): `mode: development` may honor `X-OpenTPRM-User` / `X-OpenTPRM-Roles` headers for API smoke. Production refuses insecure identity shortcuts.
 

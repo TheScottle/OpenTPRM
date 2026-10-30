@@ -19,7 +19,7 @@ Portal (vendor) path is separate and **off by default**. Backup/restore drill: s
 |------|----------|-------|
 | Create / list vendors | `/vendors` · `POST/GET /api/v1/vendors` | Legal name, tags, contacts, engagements |
 | CSV import (quarantine) | `POST /api/v1/vendors:import` | No formula eval |
-| Intake record | `/intakes` · `POST /api/v1/intakes` | Analyst queue HTML |
+| Intake record | `/intakes` · `POST /api/v1/intakes` | Requires existing `engagement_id` (FK); missing/unknown → **400** |
 | Submit + tier | `POST /api/v1/intakes/{id}:submit` | Inherent-risk tiering drives diligence scope |
 
 Duplicate detect / merge and next-action due live on the inventory store (`:merge`, history). Prefer the intake queue for first-pass triage.

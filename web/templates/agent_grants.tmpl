@@ -15,6 +15,7 @@
         <td>
           {{if eq .Status "active"}}
           <form method="POST" action="/me/agent-grants/{{.ID}}:revoke" class="inline">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
             <button class="btn btn-muted" type="submit">Revoke</button>
           </form>
           {{end}}

@@ -16,6 +16,7 @@
         <td>
           {{if and $.CanApprove (eq .Status "pending")}}
           <form method="POST" action="/exceptions/{{.ID}}:approve" class="inline">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
             <input type="hidden" name="residual_rating" value="high">
             <input type="hidden" name="conditions" value="monitor">
             <button class="btn" type="submit">Approve</button>

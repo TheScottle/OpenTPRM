@@ -295,19 +295,52 @@ func TestSEC_WEB_CSRF_OriginReject(t *testing.T) {
 		Origin string
 	}
 	cases := []struct {
-		r        req
-		host     string
-		reject   bool
+		r      req
+		host   string
+		reject bool
 	}{
 		{req{"POST", "cross-site", ""}, "app.local", true},
 		{req{"POST", "same-origin", "https://evil.example"}, "app.local", true},
 		{req{"POST", "same-origin", "https://app.local"}, "app.local", false},
 		{req{"GET", "cross-site", ""}, "app.local", false},
+		// Non-default HTTPS port (Unraid :8443 / local smoke) must accept matching Origin.
+		{req{"POST", "same-origin", "https://127.0.0.1:8443"}, "127.0.0.1:8443", false},
+		{req{"POST", "same-origin", "https://127.0.0.1:8443"}, "127.0.0.1", false},
+		{req{"POST", "same-origin", "https://evil.example:8443"}, "127.0.0.1:8443", true},
+		{req{"POST", "same-origin", "https://127.0.0.1:9999"}, "127.0.0.1:8443", true},
 	}
 	for i, c := range cases {
 		r := &httpRequest{method: c.r.Method, sfs: c.r.SFS, origin: c.r.Origin}
 		if got := authn.CheckOriginRejectsCrossSite(r.asHTTP(), c.host); got != c.reject {
 			t.Fatalf("case %d: got %v want %v", i, got, c.reject)
 		}
+	}
+}
+
+func TestSEC_AN_003_StepUpPersistsAcrossLookup(t *testing.T) {
+	db := openTestDB(t)
+	ss := authn.NewSessionStore(db)
+	ctx := context.Background()
+	_, err := db.Exec(`INSERT INTO users(id, principal_type, email, display_name, roles_json, disabled, created_at, created_by, updated_at, updated_by)
+		VALUES('u-step','workforce','step@example.com','S','["approver"]',0,datetime('now'),'t',datetime('now'),'t')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := ss.Create(ctx, "u-step", 2, []string{"approver"}, "step@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ss.RecordStepUp(ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ss.LookupByID(ctx, sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.StepUpFresh(time.Now().UTC()) {
+		t.Fatalf("step_up_at must survive LookupByID, got %#v", got.StepUpAt)
+	}
+	if got.AAL < 3 {
+		t.Fatalf("aal want >=3 got %d", got.AAL)
 	}
 }

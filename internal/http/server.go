@@ -123,11 +123,8 @@ func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
 
 		// CSRF + Origin checks for cookie sessions on state-changing methods (SEC-WEB / SEC-AZ-001).
 		if a.Sessions != nil && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			host := r.Host
-			if i := strings.IndexByte(host, ':'); i >= 0 {
-				host = host[:i]
-			}
-			if authn.CheckOriginRejectsCrossSite(r, host) {
+			// Pass full Host (may include :8443) so Origin port matching works for Unraid / local smoke.
+			if authn.CheckOriginRejectsCrossSite(r, r.Host) {
 				writeProblem(w, http.StatusForbidden, "csrf", "cross-site request rejected")
 				return
 			}
@@ -135,6 +132,10 @@ func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
 				sess, err := a.Sessions.LookupByID(r.Context(), c.Value)
 				if err == nil {
 					token := r.Header.Get(authn.CSRFHeader)
+					if token == "" {
+						_ = r.ParseForm()
+						token = r.FormValue(authn.CSRFFormField)
+					}
 					if err := authn.ValidateCSRF(sess, token); err != nil {
 						writeProblem(w, http.StatusForbidden, "csrf", "csrf validation failed")
 						return
@@ -246,6 +247,25 @@ func (a *App) handleAnswerLibraryUI(w http.ResponseWriter, r *http.Request, ac a
 	}
 }
 
+func (a *App) csrfForRequest(r *http.Request) string {
+	if a.Sessions == nil {
+		return ""
+	}
+	c, err := r.Cookie(authn.SessionCookie)
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	sess, err := a.Sessions.LookupByID(r.Context(), c.Value)
+	if err != nil {
+		return ""
+	}
+	tok, err := a.Sessions.IssueCSRF(r.Context(), sess)
+	if err != nil {
+		return ""
+	}
+	return tok
+}
+
 func (a *App) handleExceptionUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	ctx := authz.WithContext(r.Context(), ac)
 	path := strings.TrimPrefix(r.URL.Path, "/exceptions/")
@@ -310,6 +330,7 @@ func (a *App) handleExceptionUI(w http.ResponseWriter, r *http.Request, ac authz
 	}
 	data := map[string]any{
 		"Title": "Exceptions", "User": ac.PrincipalID, "Items": items, "CanApprove": ac.HasRole("approver"),
+		"CSRFToken": a.csrfForRequest(r),
 	}
 	if err := a.Templates.ExecuteTemplate(w, "exceptions.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
@@ -346,6 +367,7 @@ func (a *App) handleAgentGrantsUI(w http.ResponseWriter, r *http.Request, ac aut
 	}
 	data := map[string]any{
 		"Title": "My agent grants", "User": ac.PrincipalID, "Items": items,
+		"CSRFToken": a.csrfForRequest(r),
 	}
 	if err := a.Templates.ExecuteTemplate(w, "agent_grants.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
@@ -423,6 +445,7 @@ func (a *App) handleChangeRequestUI(w http.ResponseWriter, r *http.Request, ac a
 	}
 	data := map[string]any{
 		"Title": "Change requests", "User": ac.PrincipalID, "Items": items, "CanApprove": ac.HasRole("approver"),
+		"CSRFToken": a.csrfForRequest(r),
 	}
 	if err := a.Templates.ExecuteTemplate(w, "change_requests.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")

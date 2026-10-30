@@ -460,10 +460,39 @@ func (s *Store) FourthPartyConcentration(ctx context.Context) (map[string]int, e
 	return out, rows.Err()
 }
 
+// ErrEngagementRequired is returned when a child row needs a valid engagement_id.
+var ErrEngagementRequired = fmt.Errorf("engagement_id required")
+
+// ErrEngagementNotFound is returned when engagement_id does not resolve.
+var ErrEngagementNotFound = fmt.Errorf("engagement not found")
+
+// EngagementExists reports whether an engagement row is present.
+func (s *Store) EngagementExists(ctx context.Context, id string) (bool, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return false, err
+	}
+	if id == "" {
+		return false, nil
+	}
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM engagements WHERE id=?`, id).Scan(&n)
+	return n > 0, err
+}
+
 // CreateIntake inserts an intake row.
 func (s *Store) CreateIntake(ctx context.Context, in Intake) error {
 	if _, err := RequireAuthz(ctx); err != nil {
 		return err
+	}
+	if in.EngagementID == "" {
+		return ErrEngagementRequired
+	}
+	ok, err := s.EngagementExists(ctx, in.EngagementID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrEngagementNotFound
 	}
 	now := nowUTC()
 	if in.AnswersJSON == "" {
@@ -475,7 +504,7 @@ func (s *Store) CreateIntake(ctx context.Context, in Intake) error {
 	if in.PlanJSON == "" {
 		in.PlanJSON = "{}"
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO intakes(
+	_, err = s.db.ExecContext(ctx, `INSERT INTO intakes(
 		id, engagement_id, answers_json, factor_scores_json, weighted_score, tier, plan_json, status,
 		created_at, created_by, updated_at, updated_by
 	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,

@@ -84,7 +84,12 @@ func (a *App) handleIntakes(w http.ResponseWriter, r *http.Request, ac authz.Con
 		in.UpdatedBy = ac.PrincipalID
 		in.Status = "draft"
 		if err := a.Store.CreateIntake(r.Context(), in); err != nil {
-			writeProblem(w, 500, "error", "create failed")
+			switch {
+			case errors.Is(err, store.ErrEngagementRequired), errors.Is(err, store.ErrEngagementNotFound):
+				writeProblem(w, 400, "bad_request", err.Error())
+			default:
+				writeProblem(w, 500, "error", "create failed")
+			}
 			return
 		}
 		writeJSON(w, 201, in)

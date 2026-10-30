@@ -15,9 +15,11 @@
         <td>
           {{if and $.CanApprove (eq .Status "pending_approval")}}
           <form method="POST" action="/change-requests/{{.ID}}:approve" class="inline">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
             <button class="btn" type="submit">Approve</button>
           </form>
           <form method="POST" action="/change-requests/{{.ID}}:reject" class="inline">
+            {{if $.CSRFToken}}<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">{{end}}
             <button class="btn btn-muted" type="submit">Reject</button>
           </form>
           {{end}}

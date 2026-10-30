@@ -61,7 +61,12 @@ func TestAT_01_IntakeSubmitHTTPE2E(t *testing.T) {
 		return w
 	}
 
-	w := do(http.MethodPost, "/api/v1/vendors", map[string]any{"legal_name": "Priv Access LLC"}, "at01-vendor")
+	w := do(http.MethodPost, "/api/v1/intakes", map[string]any{"answers_json": `{}`}, "at01-intake-missing-eng")
+	if w.Code != 400 {
+		t.Fatalf("intake without engagement_id want 400, got %d %s", w.Code, w.Body.String())
+	}
+
+	w = do(http.MethodPost, "/api/v1/vendors", map[string]any{"legal_name": "Priv Access LLC"}, "at01-vendor")
 	if w.Code != 201 {
 		t.Fatalf("vendor: %d %s", w.Code, w.Body.String())
 	}

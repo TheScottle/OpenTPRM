@@ -42,8 +42,8 @@ func (s *SessionStore) Create(ctx context.Context, userID string, aal int, roles
 		Roles:     append([]string(nil), roles...),
 		Email:     email,
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(id_hash, user_id, created_at, last_seen_at, absolute_expires_at, aal, csrf_hash, revoked)
-		VALUES(?,?,?,?,?,?,?,0)`,
+	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(id_hash, user_id, created_at, last_seen_at, absolute_expires_at, aal, csrf_hash, revoked, step_up_at)
+		VALUES(?,?,?,?,?,?,?,0,'')`,
 		idHash, userID, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
 		sess.Absolute.Format(time.RFC3339Nano), aal, csrfHash)
 	if err != nil {
@@ -62,9 +62,10 @@ func (s *SessionStore) LookupByID(ctx context.Context, id string) (*Session, err
 		userID, created, lastSeen, absolute, csrfHash string
 		aal, revoked                                  int
 	)
-	err := s.db.QueryRowContext(ctx, `SELECT user_id, created_at, last_seen_at, absolute_expires_at, aal, csrf_hash, revoked
+	var stepUpAt string
+	err := s.db.QueryRowContext(ctx, `SELECT user_id, created_at, last_seen_at, absolute_expires_at, aal, csrf_hash, revoked, COALESCE(step_up_at,'')
 		FROM sessions WHERE id_hash=?`, hash).
-		Scan(&userID, &created, &lastSeen, &absolute, &aal, &csrfHash, &revoked)
+		Scan(&userID, &created, &lastSeen, &absolute, &aal, &csrfHash, &revoked, &stepUpAt)
 	if err == sql.ErrNoRows {
 		return nil, ErrInvalidSession
 	}
@@ -82,6 +83,11 @@ func (s *SessionStore) LookupByID(ctx context.Context, id string) (*Session, err
 	sess.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	sess.LastSeen, _ = time.Parse(time.RFC3339Nano, lastSeen)
 	sess.Absolute, _ = time.Parse(time.RFC3339Nano, absolute)
+	if stepUpAt != "" {
+		if t, err := time.Parse(time.RFC3339Nano, stepUpAt); err == nil {
+			sess.StepUpAt = t
+		}
+	}
 
 	// Attach roles from users table when present.
 	var rolesJSON string
@@ -128,14 +134,32 @@ func (s *SessionStore) RevokeAllForUser(ctx context.Context, userID string) (int
 	return res.RowsAffected()
 }
 
-// RecordStepUp stamps WebAuthn step-up time on the in-memory session and persists AAL bump.
+// RecordStepUp stamps WebAuthn step-up time on the session and persists AAL + step_up_at.
 func (s *SessionStore) RecordStepUp(ctx context.Context, sess *Session) error {
 	now := time.Now().UTC()
 	sess.StepUpAt = now
 	if sess.AAL < 3 {
 		sess.AAL = 3
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET aal=?, last_seen_at=? WHERE id_hash=?`,
-		sess.AAL, now.Format(time.RFC3339Nano), sess.IDHash)
+	ts := now.Format(time.RFC3339Nano)
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET aal=?, last_seen_at=?, step_up_at=? WHERE id_hash=?`,
+		sess.AAL, ts, ts, sess.IDHash)
 	return err
+}
+
+// IssueCSRF rotates the synchronizer token for HTML form rendering (plaintext only returned here).
+func (s *SessionStore) IssueCSRF(ctx context.Context, sess *Session) (string, error) {
+	if sess == nil || sess.IDHash == "" {
+		return "", ErrInvalidSession
+	}
+	token, hash, err := NewCSRFToken()
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sessions SET csrf_hash=? WHERE id_hash=? AND revoked=0`, hash, sess.IDHash); err != nil {
+		return "", err
+	}
+	sess.CSRFToken = token
+	sess.CSRFHash = hash
+	return token, nil
 }
