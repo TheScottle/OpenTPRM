@@ -15,10 +15,11 @@ import (
 // MaxExtractBytes caps PDFium-free text extract in the sandbox child (QST-011 / EVD).
 const MaxExtractBytes = 8 << 20
 
-// ExtractResult is PDFium-free page text for TXT/JSON (and similar) inputs.
+// ExtractResult is PDFium-free page text for TXT/JSON (and PDF page-count stub) inputs.
 type ExtractResult struct {
 	MediaType string   `json:"media_type"`
 	Pages     []string `json:"pages"`
+	PageCount int      `json:"page_count,omitempty"`
 }
 
 // ExtractTextFile reads an allow-listed absolute path and extracts plain text without PDFium.
@@ -43,11 +44,16 @@ func ExtractTextFile(absPath string) (ExtractResult, error) {
 	switch ext {
 	case ".json":
 		return extractJSON(raw)
+	case ".pdf":
+		return extractPDFPageCountStub(raw), nil
 	case ".txt", ".text", ".md", ".csv", ".log", "":
 		return extractTXT(raw), nil
 	default:
-		// Sniff: JSON object/array, else treat as text if valid UTF-8.
+		// Sniff: PDF, JSON object/array, else treat as text if valid UTF-8.
 		trim := bytes.TrimSpace(raw)
+		if bytes.HasPrefix(trim, []byte("%PDF")) {
+			return extractPDFPageCountStub(raw), nil
+		}
 		if len(trim) > 0 && (trim[0] == '{' || trim[0] == '[') {
 			if got, err := extractJSON(raw); err == nil {
 				return got, nil
@@ -56,7 +62,19 @@ func ExtractTextFile(absPath string) (ExtractResult, error) {
 		if utf8.Valid(raw) {
 			return extractTXT(raw), nil
 		}
-		return ExtractResult{}, fmt.Errorf("sandbox extract: unsupported media (PDFium-free path supports TXT/JSON only)")
+		return ExtractResult{}, fmt.Errorf("sandbox extract: unsupported media (PDFium-free path supports TXT/JSON; PDF page-count stub only — ADR-0004)")
+	}
+}
+
+// extractPDFPageCountStub counts /Type /Page markers without CGO or PDFium (ADR-0004).
+// It does not extract page text; Pages holds one summary line for viewer metadata.
+func extractPDFPageCountStub(raw []byte) ExtractResult {
+	n := CountPDFPages(raw)
+	summary := fmt.Sprintf("PDF page-count stub (no text extract; ADR-0004): %d page(s)", n)
+	return ExtractResult{
+		MediaType: "application/pdf",
+		Pages:     []string{summary},
+		PageCount: n,
 	}
 }
 

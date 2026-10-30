@@ -172,6 +172,8 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 		a.handleChangeRequestUI(w, r, ac)
 	case r.URL.Path == "/intakes" || r.URL.Path == "/intakes/":
 		a.handleIntakeQueueUI(w, r, ac)
+	case r.URL.Path == "/answer-library" || r.URL.Path == "/answer-library/":
+		a.handleAnswerLibraryUI(w, r, ac)
 	default:
 		if strings.HasPrefix(r.URL.Path, "/change-requests/") {
 			a.handleChangeRequestUI(w, r, ac)
@@ -191,6 +193,32 @@ func (a *App) handleIntakeQueueUI(w http.ResponseWriter, r *http.Request, ac aut
 		"Title": "Intake queue", "User": ac.PrincipalID, "Items": items,
 	}
 	if err := a.Templates.ExecuteTemplate(w, "intakes.tmpl", data); err != nil {
+		writeProblem(w, 500, "error", "template render failed")
+	}
+}
+
+func (a *App) handleAnswerLibraryUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	ctx := authz.WithContext(r.Context(), ac)
+	vendorID := r.URL.Query().Get("vendor_id")
+	var (
+		entries []store.AnswerLibraryEntry
+		vendors []store.Vendor
+		vname   string
+	)
+	if a.Store != nil && ac.Valid() {
+		vendors, _ = a.Store.ListVendors(ctx)
+		if vendorID != "" {
+			entries, _ = a.Store.ListAnswerLibrary(ctx, vendorID)
+			if v, err := a.Store.GetVendor(ctx, vendorID); err == nil {
+				vname = v.LegalName
+			}
+		}
+	}
+	data := map[string]any{
+		"Title": "Answer library", "User": ac.PrincipalID,
+		"VendorID": vendorID, "VendorName": vname, "Entries": entries, "Vendors": vendors,
+	}
+	if err := a.Templates.ExecuteTemplate(w, "answer_library.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
 	}
 }

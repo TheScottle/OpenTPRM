@@ -67,29 +67,68 @@ func (a *App) handleWebAuthnEnrollFinish(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
-		UserID       string `json:"user_id"`
-		ChallengeID  string `json:"challenge_id"`
-		CredentialID string `json:"credential_id"` // hex
-		PublicKey    string `json:"public_key"`    // hex
-		Signature    string `json:"signature"`     // hex
+		UserID            string   `json:"user_id"`
+		ChallengeID       string   `json:"challenge_id"`
+		CredentialID      string   `json:"credential_id"`       // hex
+		PublicKey         string   `json:"public_key"`          // hex raw Ed25519 (optional if COSE set)
+		PublicKeyCOSE     string   `json:"public_key_cose"`     // hex COSE_Key
+		PublicKeyAlg      int64    `json:"public_key_alg"`      // COSE alg
+		AAGUID            string   `json:"aaguid"`              // hex
+		Transports        []string `json:"transports"`
+		AttestationFormat string   `json:"attestation_format"`
+		Nickname          string   `json:"nickname"`
+		Signature         string   `json:"signature"` // hex
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		writeProblem(w, 400, "bad_request", "invalid json")
 		return
 	}
 	credID, err1 := hex.DecodeString(body.CredentialID)
-	pub, err2 := hex.DecodeString(body.PublicKey)
 	sig, err3 := hex.DecodeString(body.Signature)
-	if err1 != nil || err2 != nil || err3 != nil {
-		writeProblem(w, 400, "bad_request", "hex fields required")
+	if err1 != nil || err3 != nil {
+		writeProblem(w, 400, "bad_request", "hex credential_id and signature required")
 		return
 	}
-	cred, err := a.Credentials.EnrollFinish(r.Context(), a.Challenges, body.UserID, body.ChallengeID, credID, pub, sig, time.Now().UTC())
+	var pub, cose, aaguid []byte
+	if body.PublicKey != "" {
+		var err error
+		pub, err = hex.DecodeString(body.PublicKey)
+		if err != nil {
+			writeProblem(w, 400, "bad_request", "public_key must be hex")
+			return
+		}
+	}
+	if body.PublicKeyCOSE != "" {
+		var err error
+		cose, err = hex.DecodeString(body.PublicKeyCOSE)
+		if err != nil {
+			writeProblem(w, 400, "bad_request", "public_key_cose must be hex")
+			return
+		}
+	}
+	if body.AAGUID != "" {
+		var err error
+		aaguid, err = hex.DecodeString(body.AAGUID)
+		if err != nil {
+			writeProblem(w, 400, "bad_request", "aaguid must be hex")
+			return
+		}
+	}
+	cred, err := a.Credentials.EnrollFinishRich(r.Context(), a.Challenges, body.UserID, body.ChallengeID, authn.EnrollInput{
+		CredentialID: credID, PublicKey: pub, PublicKeyCOSE: cose, PublicKeyAlg: body.PublicKeyAlg,
+		AAGUID: aaguid, Transports: body.Transports, AttestationFormat: body.AttestationFormat,
+		Nickname: body.Nickname, Signature: sig,
+	}, time.Now().UTC())
 	if err != nil {
 		writeProblem(w, 400, "bad_request", err.Error())
 		return
 	}
-	writeJSON(w, 201, map[string]any{"credential_id": body.CredentialID, "user_id": cred.UserID})
+	writeJSON(w, 201, map[string]any{
+		"credential_id": body.CredentialID, "user_id": cred.UserID,
+		"public_key_alg": cred.PublicKeyAlg, "attestation_format": cred.AttestationFormat,
+		"transports": cred.Transports, "nickname": cred.Nickname,
+		"has_cose": len(cred.PublicKeyCOSE) > 0,
+	})
 }
 
 func (a *App) handleWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request) {

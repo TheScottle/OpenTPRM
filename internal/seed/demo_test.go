@@ -45,3 +45,32 @@ func TestOPS_004_DemoNotRequested(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOPS_004_RicherSterlingVanceDemoGraphDevOnly(t *testing.T) {
+	t.Setenv(seed.EnvDemo, "1")
+	g := seed.DemoGraphSeed()
+	if g.Org.LegalName != seed.DemoOrgLegalName {
+		t.Fatalf("org: %s", g.Org.LegalName)
+	}
+	if len(g.Vendors) < 3 || len(g.Contacts) < 3 || len(g.Engagements) < 3 || len(g.AnswerKeys) < 3 {
+		t.Fatalf("graph too thin: %+v", g)
+	}
+	called := false
+	err := seed.ApplyDemoGraph(context.Background(), config.ModeProduction, func(ctx context.Context, graph seed.DemoGraph) error {
+		called = true
+		return nil
+	})
+	if err != seed.ErrProductionDemo || called {
+		t.Fatalf("production richer seed: err=%v called=%v", err, called)
+	}
+	err = seed.ApplyDemoGraph(context.Background(), config.ModeDevelopment, func(ctx context.Context, graph seed.DemoGraph) error {
+		if graph.Vendors[0].LegalName == "" {
+			t.Fatal("missing vendor")
+		}
+		called = true
+		return nil
+	})
+	if err != nil || !called {
+		t.Fatalf("dev richer seed: err=%v called=%v", err, called)
+	}
+}

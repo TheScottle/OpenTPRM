@@ -173,4 +173,51 @@ func TestRPT_004_ExportSecondApproverHTTP(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "second approver") {
 		t.Fatalf("committee: %d %s", w.Code, w.Body.String())
 	}
+	w = do(http.MethodGet, "/api/v1/reports/committee?format=zip&classification=Client-Confidential", nil, "approver2", "approver", false)
+	if w.Code != 200 || w.Header().Get("Content-Type") != "application/zip" {
+		t.Fatalf("committee zip: %d %s ct=%s", w.Code, w.Body.String(), w.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(w.Header().Get("X-OpenTPRM-Marking"), "Client-Confidential") {
+		t.Fatalf("zip marking header: %q", w.Header().Get("X-OpenTPRM-Marking"))
+	}
+	w = do(http.MethodGet, "/api/v1/exports/"+id+":bundle", nil, "approver2", "approver", false)
+	if w.Code != 200 || w.Header().Get("Content-Type") != "application/zip" {
+		t.Fatalf("export bundle: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUI_AnswerLibraryPage(t *testing.T) {
+	_, h := testApp(t)
+	do := func(method, path string, body any, roles string) *httptest.ResponseRecorder {
+		var r *http.Request
+		if body != nil {
+			b, _ := json.Marshal(body)
+			r = httptest.NewRequest(method, path, bytes.NewReader(b))
+			r.Header.Set("Content-Type", "application/json")
+		} else {
+			r = httptest.NewRequest(method, path, nil)
+		}
+		r.Header.Set("X-OpenTPRM-User", "analyst1")
+		r.Header.Set("X-OpenTPRM-Roles", roles)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	w := do(http.MethodPost, "/api/v1/vendors", map[string]any{"legal_name": "Lib UI Co"}, "risk_analyst")
+	if w.Code != 201 {
+		t.Fatalf("vendor: %d %s", w.Code, w.Body.String())
+	}
+	var vendor map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &vendor)
+	vid := vendor["id"].(string)
+	w = do(http.MethodPost, "/api/v1/answer-library", map[string]any{
+		"vendor_id": vid, "question_key": "UI-01", "answer_json": `"documented"`,
+	}, "risk_analyst")
+	if w.Code != 201 {
+		t.Fatalf("upsert: %d %s", w.Code, w.Body.String())
+	}
+	w = do(http.MethodGet, "/answer-library?vendor_id="+vid, nil, "risk_analyst")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "UI-01") || !strings.Contains(w.Body.String(), "Answer library") {
+		t.Fatalf("ui: %d %s", w.Code, w.Body.String())
+	}
 }

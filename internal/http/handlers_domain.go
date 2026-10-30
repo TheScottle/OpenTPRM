@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -1006,12 +1007,28 @@ func (a *App) handleReports(w http.ResponseWriter, r *http.Request, ac authz.Con
 		raw, _ := json.Marshal(map[string]any{"items": items, "type": typ})
 		body = string(raw)
 	case "committee":
-		// Committee pack stub (RPT-002): marked JSON; PDF rendering still open.
-		// Client-Confidential bulk exports still need second approver via /exports/{id}:approve.
+		// Committee pack (RPT-002): marked text ZIP (pdfcpu PDF deferred — ADR-0004).
+		format := r.URL.Query().Get("format")
+		summary := "Committee pack.\nSecond approver required for Client-Confidential bulk exports via /exports/{id}:approve.\n"
+		if format == "zip" || format == "bundle" || r.Header.Get("Accept") == "application/zip" {
+			zipBytes, marking, err := reporting.BuildCommitteePack(classification, a.Cfg.Labels.Markings, summary)
+			if err != nil {
+				writeProblem(w, 500, "error", "committee pack failed")
+				return
+			}
+			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Disposition", `attachment; filename="committee-pack.zip"`)
+			w.Header().Set("X-OpenTPRM-Classification", classification)
+			w.Header().Set("X-OpenTPRM-Marking", marking)
+			w.WriteHeader(200)
+			_, _ = w.Write(zipBytes)
+			return
+		}
 		raw, _ := json.Marshal(map[string]any{
-			"type": "committee", "format": "json_stub",
-			"note": "PDF pack pending; second approver required for Client-Confidential bulk exports",
+			"type": "committee", "format": "marked_zip",
+			"note": "text ZIP pack available via ?format=zip; second approver required for Client-Confidential bulk exports",
 			"classification": classification,
+			"download": "/api/v1/reports/committee?format=zip&classification=" + classification,
 		})
 		body = string(raw)
 	default:
@@ -1023,6 +1040,32 @@ func (a *App) handleReports(w http.ResponseWriter, r *http.Request, ac authz.Con
 
 func (a *App) handleExports(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.HasSuffix(path, ":bundle") && r.Method == http.MethodGet {
+		id := extractID(r.URL.Path, "/api/v1/exports/", ":bundle")
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "export", ID: id}) {
+			return
+		}
+		exp, err := a.Store.GetExport(r.Context(), id)
+		if err != nil {
+			writeProblem(w, 404, "not_found", "export not found")
+			return
+		}
+		content := fmt.Sprintf("export_id=%s\nformat=%s\nscope=%s\nstatus=%s\nrequester=%s\nsecond_approver=%s\n",
+			exp.ID, exp.Format, exp.Scope, exp.Status, exp.Requester, exp.SecondApprover)
+		zipBytes, marking, err := reporting.BuildMarkedZip(exp.Classification, a.Cfg.Labels.Markings, []reporting.PackFile{
+			{Name: "export/metadata.txt", Content: content},
+		})
+		if err != nil {
+			writeProblem(w, 500, "error", "bundle failed")
+			return
+		}
+		_ = marking
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", `attachment; filename="export-`+id+`.zip"`)
+		w.WriteHeader(200)
+		_, _ = w.Write(zipBytes)
+		return
+	}
 	if strings.Contains(path, ":approve") && r.Method == http.MethodPost {
 		id := extractID(r.URL.Path, "/api/v1/exports/", ":approve")
 		if !a.authorize(w, ac, authz.ActionExportBulk, authz.Resource{Type: "export", ID: id}) {
@@ -1730,7 +1773,67 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request, ac authz.Conte
 	if !a.authorize(w, ac, authz.ActionAdminAny, authz.Resource{Type: "admin", ID: "*"}) {
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true})
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	switch {
+	case path == "/admin/keys" || strings.HasPrefix(path, "/admin/keys"):
+		writeJSON(w, 200, map[string]any{"items": []any{}, "note": "key actions dual-controlled; rotate API pending"})
+	case path == "/admin/backups" || strings.HasPrefix(path, "/admin/backups"):
+		writeJSON(w, 200, map[string]any{"items": []any{}, "note": "use opentprm backup|restore --verify-only (ARC-013)"})
+	default:
+		writeJSON(w, 200, map[string]any{"ok": true})
+	}
+}
+
+func (a *App) handleMeAgentGrants(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+		return
+	}
+	// Stub list/revoke of the caller's agent grants (§10.2).
+	writeJSON(w, 200, map[string]any{"items": []any{}, "principal_id": ac.PrincipalID})
+}
+
+func (a *App) handleTasks(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "task", ID: "*"}) {
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": []any{}, "note": "task queue stub (§10.2)"})
+}
+
+func (a *App) handleAuditEvents(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	if !ac.HasRole("auditor") && !ac.HasRole("security_administrator") {
+		writeProblem(w, http.StatusForbidden, "forbidden", "auditor or security_administrator required")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": []any{}, "note": "audit event list stub; use /audit:verify for chain check"})
+}
+
+func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	if ac.PrincipalID == "" || ac.PrincipalID == "anonymous" {
+		writeProblem(w, 401, "unauthorized", "metrics require auth")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok", "note": "metrics stub"})
+}
+
+func (a *App) handleSOCReviewsAlias(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	// §10.2 /soc-reviews/{evidenceId} aliases evidence SOC review routes.
+	rest := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/api/v1/soc-reviews"), "/")
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
+		writeProblem(w, 404, "not_found", "evidence id required")
+		return
+	}
+	id := rest
+	if i := strings.IndexAny(id, "/:"); i >= 0 {
+		id = id[:i]
+	}
+	r2 := r.Clone(r.Context())
+	r2.URL.Path = "/api/v1/evidence/" + id + "/soc-review"
+	if strings.Contains(rest, ":signoff") {
+		r2.URL.Path = "/api/v1/evidence/" + id + "/soc-review:signoff"
+	}
+	a.handleEvidence(w, r2, ac)
 }
 
 type storeSuggestionWriter struct {

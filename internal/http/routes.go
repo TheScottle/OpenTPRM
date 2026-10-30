@@ -30,8 +30,18 @@ func (a *App) routeAPIInner(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id": ac.PrincipalID, "roles": ac.Roles, "type": ac.PrincipalType,
 		})
+	case path == "/me/agent-grants" || strings.HasPrefix(path, "/me/agent-grants"):
+		a.handleMeAgentGrants(w, r, ac)
 	case strings.HasPrefix(path, "/auth/"):
 		a.handleAuth(w, r, ac)
+	case path == "/tasks" || strings.HasPrefix(path, "/tasks"):
+		a.handleTasks(w, r, ac)
+	case path == "/audit-events" || strings.HasPrefix(path, "/audit-events"):
+		a.handleAuditEvents(w, r, ac)
+	case path == "/metrics" && (r.Method == http.MethodGet):
+		a.handleMetrics(w, r, ac)
+	case path == "/soc-reviews" || strings.HasPrefix(path, "/soc-reviews/"):
+		a.handleSOCReviewsAlias(w, r, ac)
 	case path == "/vendors" || path == "/vendors:import" || strings.HasPrefix(path, "/vendors/"):
 		a.handleVendors(w, r, ac)
 	case path == "/fourth-party-links" || strings.HasPrefix(path, "/fourth-party-links"):

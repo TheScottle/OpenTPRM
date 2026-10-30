@@ -27,6 +27,68 @@ paths:
       operationId: getMe
       responses:
         "200": { description: OK }
+  /me/agent-grants:
+    get:
+      summary: List and manage the caller's agent grants
+      operationId: listMyAgentGrants
+      responses:
+        "200": { description: OK }
+  /auth/webauthn/enroll/begin:
+    post:
+      tags: [admin]
+      summary: Begin WebAuthn enroll challenge
+      operationId: webauthnEnrollBegin
+      responses:
+        "200": { description: Challenge issued }
+  /auth/webauthn/enroll/finish:
+    post:
+      tags: [admin]
+      summary: Finish WebAuthn enroll (stores COSE/public key metadata)
+      operationId: webauthnEnrollFinish
+      responses:
+        "201": { description: Credential stored }
+  /auth/webauthn/login/begin:
+    post:
+      tags: [admin]
+      summary: Begin WebAuthn login challenge
+      operationId: webauthnLoginBegin
+      responses:
+        "200": { description: Challenge issued }
+  /auth/webauthn/login/finish:
+    post:
+      tags: [admin]
+      summary: Finish WebAuthn login assertion
+      operationId: webauthnLoginFinish
+      responses:
+        "200": { description: Session created }
+  /auth/webauthn/step-up/begin:
+    post:
+      tags: [admin]
+      summary: Begin WebAuthn step-up challenge
+      operationId: webauthnStepUpBegin
+      responses:
+        "200": { description: Challenge issued }
+  /auth/webauthn/step-up/finish:
+    post:
+      tags: [admin]
+      summary: Finish WebAuthn step-up assertion
+      operationId: webauthnStepUpFinish
+      responses:
+        "200": { description: Step-up recorded }
+  /auth/logout:
+    post:
+      tags: [admin]
+      summary: Revoke session cookie
+      operationId: logout
+      responses:
+        "200": { description: OK }
+  /tasks:
+    get:
+      tags: [admin]
+      summary: Analyst task queue (§10.2 stub)
+      operationId: listTasks
+      responses:
+        "200": { description: OK }
   /vendors:
     get:
       tags: [vendors]
@@ -402,6 +464,23 @@ paths:
         - $ref: "#/components/parameters/ID"
       responses:
         "200": { description: OK }
+  /soc-reviews/{id}:
+    get:
+      tags: [evidence]
+      summary: SOC review by evidence id (§10.2 alias)
+      operationId: getSOCReviewAlias
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    put:
+      tags: [evidence]
+      summary: Upsert SOC review by evidence id (§10.2 alias)
+      operationId: putSOCReviewAlias
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
   /findings:
     get:
       tags: [findings]
@@ -525,6 +604,15 @@ paths:
         "200": { description: Approved }
         "401": { description: Step-up required }
         "403": { description: SOD — requester cannot self-approve }
+  "/exports/{id}:bundle":
+    get:
+      tags: [reports]
+      summary: Download marked text ZIP export bundle
+      operationId: downloadExportBundle
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: application/zip }
   /contracts:
     get:
       tags: [contracts]
@@ -656,6 +744,16 @@ paths:
       operationId: createSuggestion
       responses:
         "201": { description: Created }
+  "/suggestions/{id}:accept":
+    post:
+      tags: [agents]
+      summary: Accept suggestion after citation verify (AI-064)
+      operationId: acceptSuggestion
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: Accepted }
+        "409": { description: Unverified citation }
   /change-requests:
     get:
       tags: [agents]
@@ -776,6 +874,13 @@ paths:
       responses:
         "200": { description: OK }
         "409": { description: Chain broken }
+  /audit-events:
+    get:
+      tags: [audit]
+      summary: List audit events (Auditor / Security Administrator)
+      operationId: listAuditEvents
+      responses:
+        "200": { description: OK }
   /admin/settings:
     get:
       tags: [admin]
@@ -783,6 +888,28 @@ paths:
       operationId: adminSettings
       responses:
         "200": { description: OK }
+  /admin/keys:
+    get:
+      tags: [admin]
+      summary: List keyring actions (dual-controlled)
+      operationId: adminKeys
+      responses:
+        "200": { description: OK }
+  /admin/backups:
+    get:
+      tags: [admin]
+      summary: Backup job metadata (ARC-013 verify-only)
+      operationId: adminBackups
+      responses:
+        "200": { description: OK }
+  /metrics:
+    get:
+      tags: [admin]
+      summary: Authenticated metrics stub
+      operationId: metrics
+      responses:
+        "200": { description: OK }
+        "401": { description: Unauthorized }
 components:
   parameters:
     ID:

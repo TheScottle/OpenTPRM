@@ -85,3 +85,49 @@ func TestSEC_AN_006_WebAuthnEnrollLoginStepUp(t *testing.T) {
 		t.Fatalf("challenge must remain usable after bad sig: %v", err)
 	}
 }
+
+func TestSEC_AN_006_WebAuthnCOSEPublicKeyEnrollAssert(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	_, err := db.Exec(`INSERT INTO users(id, principal_type, email, display_name, roles_json, disabled, created_at, created_by, updated_at, updated_by)
+		VALUES('u-cose','workforce','cose@example.com','COSE','["risk_analyst"]',0,datetime('now'),'t',datetime('now'),'t')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenges := authn.NewChallengeStore()
+	creds := authn.NewCredentialStore(db)
+	now := time.Now().UTC()
+	pub, priv, err := authn.GenerateDeviceKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cose, err := authn.MarshalEd25519COSE(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credID := []byte{0x0a, 0x0b, 0x0c, 0x0d}
+	enrollCh, err := challenges.EnrollBegin("u-cose", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig := ed25519.Sign(priv, []byte(enrollCh.ID))
+	cred, err := creds.EnrollFinishRich(ctx, challenges, "u-cose", enrollCh.ID, authn.EnrollInput{
+		CredentialID: credID, PublicKeyCOSE: cose, Signature: sig,
+		AAGUID: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		Transports: []string{"internal", "hybrid"}, AttestationFormat: "none", Nickname: "laptop",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cred.PublicKeyCOSE) == 0 || cred.Nickname != "laptop" || len(cred.Transports) != 2 {
+		t.Fatalf("rich enroll: %+v", cred)
+	}
+	loginCh, err := challenges.LoginBegin("u-cose", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginSig := ed25519.Sign(priv, []byte(loginCh.ID))
+	if _, err := creds.AssertLogin(ctx, challenges, "u-cose", "login", loginCh.ID, credID, loginSig, now); err != nil {
+		t.Fatalf("cose assert: %v", err)
+	}
+}

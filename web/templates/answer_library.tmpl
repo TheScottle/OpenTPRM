@@ -1,0 +1,35 @@
+{{define "answer_library.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>Answer library</h1>
+  <p class="lede">Accepted questionnaire answers reusable across vendor assessments (QST-035).</p>
+  {{if .VendorID}}
+  <p class="meta">Vendor <code>{{.VendorID}}</code>{{if .VendorName}} — {{.VendorName}}{{end}}</p>
+  {{end}}
+  {{if .Entries}}
+  <table class="list">
+    <thead><tr><th>Question</th><th>Status</th><th>Effective</th><th>Updated</th><th>Answer</th></tr></thead>
+    <tbody>
+    {{range .Entries}}
+      <tr>
+        <td><code>{{.QuestionKey}}</code></td>
+        <td>{{.Status}}</td>
+        <td>{{.EffectiveDate}}</td>
+        <td>{{.UpdatedAt}}</td>
+        <td class="mono">{{.AnswerJSON}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No library entries{{if .VendorID}} for this vendor{{end}}. Select a vendor via <code>?vendor_id=</code> or upsert through <code>POST /api/v1/answer-library</code>.</p>
+  {{end}}
+  {{if .Vendors}}
+  <h2>Browse by vendor</h2>
+  <ul class="plain">
+  {{range .Vendors}}
+    <li><a href="/answer-library?vendor_id={{.ID}}">{{.LegalName}}</a></li>
+  {{end}}
+  </ul>
+  {{end}}
+</section>
+{{template "footer" .}}{{end}}

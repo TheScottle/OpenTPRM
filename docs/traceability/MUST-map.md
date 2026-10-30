@@ -17,11 +17,12 @@
 | EVD chunked upload | `TestEVD_ChunkedUploadCompleteQuarantine`, `TestBlobRoundTrip` |
 | EVD-007 safe viewer | `TestSanitizeViewerTextStripsControlsAndTags`, `TestRenderViewerHTMLSafe`, `TestEVD_EvidencePageAndSOCReview`, `TestEVD_EvidencePageHTMLViewer` |
 | EVD-020 SOC schema | `TestSOCReviewSchemaEmbedded`, `TestEVD_EvidencePageAndSOCReview` |
-| SEC-UP sandbox | `TestSandboxValidateJobAllowList`, `TestSandboxForbidNetworkEnv`, `TestSandboxProbeIsolation`, `TestSandboxApplyChildHooks*`, `TestSandboxExtractTXTAndJSON`, `TestSandboxExpectedChildPolicy` |
-| QST-035 answer library | `TestQST_035_AnswerLibrary`, `TestQST_035_AnswerLibraryHTTP` |
+| SEC-UP sandbox | `TestSandboxValidateJobAllowList`, `TestSandboxForbidNetworkEnv`, `TestSandboxProbeIsolation`, `TestSandboxApplyChildHooks*`, `TestSandboxExtractTXTAndJSON`, `TestSandboxPDFPageCountStub`, `TestSandboxExpectedChildPolicy` |
+| QST-035 answer library | `TestQST_035_AnswerLibrary`, `TestQST_035_AnswerLibraryHTTP`, `TestUI_AnswerLibraryPage` |
+| RPT-002 committee pack | `TestRPT_002_CommitteeMarkedZipPack`, `TestRPT_ExportMarkedZipBundle` |
 | RPT-004 second approver | `TestRPT_004_ExportSecondApproverSOD`, `TestRPT_004_ExportSecondApproverHTTP` |
 | POR-002 passkey/TOTP | `TestPOR_002_PasskeyEnrollStub`, `TestPOR_002_TOTPEnrollVerifyStub` |
-| OPS-004 | `TestOPS_004_DemoSeedRefusedInProduction`, `TestOPS_004_DemoNotRequested` |
+| OPS-004 | `TestOPS_004_DemoSeedRefusedInProduction`, `TestOPS_004_DemoNotRequested`, `TestOPS_004_RicherSterlingVanceDemoGraphDevOnly` |
 | NFR-001 ready latency smoke | `TestNFR_001_HealthReadyLatencySmoke` |
 | OpenAPI mux contract | `TestOpenAPI_RoutesHaveMuxRegistrationSmoke` |
 | SEC-UP-002 fuzz | `FuzzValidateUpload` (+ `testdata/fuzz/ValidateUpload`) |
@@ -45,6 +46,7 @@
 | AI-071 / AT-04 eval harness | `TestAT_04_EvalHarnessInjectionZeroTolerance`, `TestAT_04_InjectionNotObeyed` |
 | UI analyst home | `TestUI_AnalystHomeAndVendors` |
 | UI intake queue | `TestUI_IntakeAnalystQueue` |
+| UI answer library | `TestUI_AnswerLibraryPage` |
 | POR-002 magic-link | `TestPOR_002_MagicLinkIssueConsume` |
 | POR vendor questionnaires | `TestPOR_VendorQuestionnaireListScoped` |
 | Portal listener | `TestPortalEnabledWiresListener` |
@@ -61,7 +63,7 @@
 | SEC-AN-004 | `TestSEC_AN_004_SessionHashedIdleAbsolute` |
 | SEC-AN-005 | `TestSEC_AN_005_LogoutRevokes` |
 | SEC-AN-003 | `TestSEC_AN_003_StepUpWindow`, `TestSEC_AN_006_WebAuthnEnrollLoginStepUp` |
-| SEC-AN-006 | `TestSEC_AN_006_ChallengeSingleUseAndThrottle`, `TestSEC_AN_006_WebAuthnEnrollLoginStepUp` |
+| SEC-AN-006 | `TestSEC_AN_006_ChallengeSingleUseAndThrottle`, `TestSEC_AN_006_WebAuthnEnrollLoginStepUp`, `TestSEC_AN_006_WebAuthnCOSEPublicKeyEnrollAssert` |
 | SEC-AN-001 | `TestSEC_AN_001_OIDCClaimValidation` |
 | SEC-WEB CSRF | `TestSEC_WEB_CSRF_OriginReject` |
 | OPS-001 | `TestOPS_001_ProductionRefusesInsecure` |

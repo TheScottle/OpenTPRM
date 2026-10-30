@@ -42,6 +42,33 @@ func TestSandboxExtractTXTAndJSON(t *testing.T) {
 	}
 }
 
+func TestSandboxPDFPageCountStub(t *testing.T) {
+	dir := t.TempDir()
+	// Minimal two-page PDF-ish markers (not a valid renderable PDF; stub counts markers).
+	pdf := "%PDF-1.4\n1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n" +
+		"2 0 obj<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>endobj\n" +
+		"3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>endobj\n" +
+		"4 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>endobj\n" +
+		"xref\n0 5\ntrailer<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n"
+	path := filepath.Join(dir, "sample.pdf")
+	if err := os.WriteFile(path, []byte(pdf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := sandbox.ExtractTextFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MediaType != "application/pdf" || got.PageCount != 2 {
+		t.Fatalf("pdf stub: %+v", got)
+	}
+	if len(got.Pages) != 1 || !strings.Contains(got.Pages[0], "2 page") {
+		t.Fatalf("summary: %+v", got.Pages)
+	}
+	if n := sandbox.CountPDFPages([]byte(pdf)); n != 2 {
+		t.Fatalf("CountPDFPages=%d", n)
+	}
+}
+
 func TestSandboxExpectedChildPolicy(t *testing.T) {
 	p := sandbox.ExpectedChildPolicy(sandbox.Constraints{AllowPaths: []string{"/tmp/x"}, ForbidNetwork: true})
 	if p.SeccompProfile != sandbox.DeploySeccompProfile {
