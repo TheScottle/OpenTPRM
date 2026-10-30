@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"html/template"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -19,6 +21,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
 	"github.com/TheScottle/OpenTPRM/internal/gateway"
 	"github.com/TheScottle/OpenTPRM/internal/store"
+	"github.com/TheScottle/OpenTPRM/web"
 )
 
 // App wires dependencies for Listener A.
@@ -35,7 +38,9 @@ type App struct {
 	Challenges   *authn.ChallengeStore
 	Credentials  *authn.CredentialStore
 	BreakGlass   *authn.BreakGlassRegistry
+	AS           *authn.AuthorizationServer
 	Idempotency  *IdempotencyStore
+	Templates    *template.Template
 	// AllowDevHeaders permits X-OpenTPRM-* bootstrap auth outside production.
 	AllowDevHeaders bool
 
@@ -51,6 +56,9 @@ func (a *App) NewServer() *http.Server {
 	mux.HandleFunc("/mcp", a.middleware(a.handleMCP))
 	mux.HandleFunc("/.well-known/oauth-protected-resource", a.middleware(a.handlePRM))
 	mux.HandleFunc("/.well-known/oauth-authorization-server", a.middleware(a.handleASMeta))
+	mux.HandleFunc("/oauth/token", a.middleware(a.handleOAuthToken))
+	mux.HandleFunc("/oauth/authorize", a.middleware(a.handleOAuthAuthorize))
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS()))))
 	mux.HandleFunc("/api/v1/", a.middleware(a.handleAPI))
 	mux.HandleFunc("/", a.middleware(a.handleUI))
 
@@ -136,10 +144,52 @@ func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
+	a.ensureTemplates()
+	ac := a.authContext(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>OpenTPRM</title></head><body>
-<h1>OpenTPRM</h1><p>Self-hosted third-party risk management.</p>
-<p><a href="/api/v1/openapi.json">OpenAPI</a></p></body></html>`)
+	switch {
+	case r.URL.Path == "/" || r.URL.Path == "/home":
+		data := map[string]any{
+			"Title": "Analyst home", "User": ac.PrincipalID, "Roles": ac.Roles,
+		}
+		if err := a.Templates.ExecuteTemplate(w, "home.tmpl", data); err != nil {
+			writeProblem(w, 500, "error", "template render failed")
+		}
+	case r.URL.Path == "/vendors" || r.URL.Path == "/vendors/":
+		var vendors []store.Vendor
+		if a.Store != nil && ac.Valid() {
+			ctx := authz.WithContext(r.Context(), ac)
+			vendors, _ = a.Store.ListVendors(ctx)
+		}
+		data := map[string]any{
+			"Title": "Vendors", "User": ac.PrincipalID, "Vendors": vendors,
+		}
+		if err := a.Templates.ExecuteTemplate(w, "vendors.tmpl", data); err != nil {
+			writeProblem(w, 500, "error", "template render failed")
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (a *App) ensureTemplates() {
+	if a.Templates != nil {
+		return
+	}
+	tmpl, err := template.ParseFS(web.TemplateFS, "templates/*.tmpl")
+	if err != nil {
+		a.Templates = template.Must(template.New("fallback").Parse(`<!DOCTYPE html><html><body><p>OpenTPRM</p></body></html>`))
+		return
+	}
+	a.Templates = tmpl
+}
+
+func staticFS() fs.FS {
+	sub, err := fs.Sub(web.StaticFS, "static")
+	if err != nil {
+		return web.StaticFS
+	}
+	return sub
 }
 
 func (a *App) handleAPI(w http.ResponseWriter, r *http.Request) {

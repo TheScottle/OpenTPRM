@@ -22,6 +22,7 @@ type Server struct {
 	CallFn   func(r *http.Request, agent, delegator authz.Context, tool string, args json.RawMessage) (json.RawMessage, int, string)
 	ListFn   func(agent authz.Context) []Tool
 	Origins  []string
+	Tasks    *TaskStore
 }
 
 // ServeHTTP handles /mcp (stateless).
@@ -92,9 +93,59 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "server/discover", "initialize":
 		writeRPC(w, rpc.ID, map[string]any{
 			"protocolVersion": ProtocolVersion,
-			"capabilities":    map[string]any{"tools": map[string]any{}, "resources": map[string]any{}, "prompts": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "opentprm", "version": "dev"},
+			"capabilities": map[string]any{
+				"tools": map[string]any{}, "resources": map[string]any{}, "prompts": map[string]any{},
+				"tasks": map[string]any{"listChanged": false},
+			},
+			"serverInfo": map[string]any{"name": "opentprm", "version": "dev"},
 		})
+	case "tasks/get":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(rpc.Params, &p)
+		if s.Tasks == nil {
+			writeRPCError(w, rpc.ID, -32603, "tasks not configured")
+			return
+		}
+		task, ok := s.Tasks.Get(p.ID, agent.PrincipalID)
+		if !ok {
+			writeRPCError(w, rpc.ID, -32004, "task not found")
+			return
+		}
+		writeRPC(w, rpc.ID, task)
+	case "tasks/update":
+		var p struct {
+			ID       string `json:"id"`
+			Status   string `json:"status"`
+			Progress int    `json:"progress"`
+		}
+		_ = json.Unmarshal(rpc.Params, &p)
+		if s.Tasks == nil {
+			writeRPCError(w, rpc.ID, -32603, "tasks not configured")
+			return
+		}
+		task, ok := s.Tasks.UpdateProgress(p.ID, agent.PrincipalID, p.Status, p.Progress)
+		if !ok {
+			writeRPCError(w, rpc.ID, -32004, "task not found")
+			return
+		}
+		writeRPC(w, rpc.ID, task)
+	case "tasks/cancel":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(rpc.Params, &p)
+		if s.Tasks == nil {
+			writeRPCError(w, rpc.ID, -32603, "tasks not configured")
+			return
+		}
+		task, ok := s.Tasks.Cancel(p.ID, agent.PrincipalID)
+		if !ok {
+			writeRPCError(w, rpc.ID, -32004, "task not found")
+			return
+		}
+		writeRPC(w, rpc.ID, task)
 	case "tools/list":
 		tools := []map[string]any{}
 		if s.ListFn != nil {

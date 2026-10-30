@@ -2,7 +2,9 @@ package httpserver
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/domain/evidence"
 	"github.com/TheScottle/OpenTPRM/internal/domain/exception"
 	"github.com/TheScottle/OpenTPRM/internal/domain/intake"
+	"github.com/TheScottle/OpenTPRM/internal/domain/reporting"
 	"github.com/TheScottle/OpenTPRM/internal/domain/risk"
 	"github.com/TheScottle/OpenTPRM/internal/store"
 	"github.com/google/uuid"
@@ -865,8 +868,9 @@ func (a *App) handleRisk(w http.ResponseWriter, r *http.Request, ac authz.Contex
 }
 
 func (a *App) handleExceptions(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	if strings.Contains(r.URL.Path, ":approve") {
-		// Agents must never approve
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.Contains(path, ":approve") && r.Method == http.MethodPost {
+		// Agents must never approve (SOD-4 / AT-03).
 		if ac.PrincipalType == authz.PrincipalAgent {
 			writeProblem(w, 403, "forbidden", "agents cannot approve")
 			return
@@ -874,11 +878,13 @@ func (a *App) handleExceptions(w http.ResponseWriter, r *http.Request, ac authz.
 		if !a.authorize(w, ac, authz.ActionExceptionApprove, authz.Resource{Type: "exception", ID: "*"}) {
 			return
 		}
+		id := extractID(path, "/exceptions/", ":approve")
 		var payload exception.Payload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&payload); err != nil {
 			writeProblem(w, 400, "bad_request", "invalid json")
 			return
 		}
+		payload.ExceptionID = id
 		payload.ApproverID = ac.PrincipalID
 		payload.DecidedAt = time.Now().UTC()
 		body, err := payload.CanonicalJSON()
@@ -891,10 +897,142 @@ func (a *App) handleExceptions(w http.ResponseWriter, r *http.Request, ac authz.
 			writeProblem(w, 500, "error", "sign failed")
 			return
 		}
-		writeJSON(w, 200, map[string]any{"payload": payload, "signature": sig})
+		sigHex := hex.EncodeToString(sig)
+		got, err := a.Store.ApproveException(r.Context(), id, ac.PrincipalID, payload, sigHex)
+		if err != nil {
+			if errors.Is(err, store.ErrSOD2RequesterApprover) {
+				writeProblem(w, 403, "sod2", err.Error())
+				return
+			}
+			writeProblem(w, 422, "approve_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"exception": got, "payload": payload, "signature": sigHex})
 		return
 	}
-	writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionFindingRead, authz.Resource{Type: "exception", ID: "*"}) {
+			return
+		}
+		eng := r.URL.Query().Get("engagement_id")
+		items, err := a.Store.ListExceptions(r.Context(), eng)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionFindingWrite, authz.Resource{Type: "exception", ID: "*"}) {
+			return
+		}
+		var body store.ExceptionRecord
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.Requester = ac.PrincipalID
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		got, err := a.Store.CreateException(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
+}
+
+func (a *App) handleReports(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "report", ID: "*"}) {
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	typ := strings.TrimPrefix(path, "/reports/")
+	typ = strings.Trim(typ, "/")
+	if typ == "" || !reporting.ReportTypes[typ] {
+		writeProblem(w, 404, "not_found", "unknown report type")
+		return
+	}
+	classification := r.URL.Query().Get("classification")
+	if classification == "" {
+		classification = "Internal"
+	}
+	var body string
+	switch typ {
+	case "exceptions":
+		items, err := a.Store.ListExceptions(r.Context(), "")
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		raw, _ := json.Marshal(map[string]any{"items": items, "type": typ})
+		body = string(raw)
+	case "inventory":
+		items, err := a.Store.ListVendors(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		raw, _ := json.Marshal(map[string]any{"items": items, "type": typ})
+		body = string(raw)
+	default:
+		body = `{"type":"` + typ + `","status":"stub"}`
+	}
+	doc := reporting.ApplyMarking(classification, a.Cfg.Labels.Markings, body)
+	writeJSON(w, 200, doc)
+}
+
+func (a *App) handleExports(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "export", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListExports(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		var body store.ExportRecord
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		if body.Classification == "" {
+			body.Classification = "Internal"
+		}
+		action := authz.ActionVendorRead
+		if reporting.SensitiveClassification(body.Classification) {
+			action = authz.ActionExportBulk
+			// Require recent step-up for Privileged / Client-Confidential bulk (RPT-004).
+			if !ac.StepUpFresh() {
+				writeProblem(w, 401, "step_up_required", "bulk export of sensitive data requires WebAuthn step-up")
+				return
+			}
+		}
+		if !a.authorize(w, ac, action, authz.Resource{Type: "export", ID: "*", Classification: body.Classification}) {
+			return
+		}
+		body.Requester = ac.PrincipalID
+		body.CreatedBy = ac.PrincipalID
+		got, err := a.Store.CreateExport(r.Context(), body, a.Cfg.Labels.Markings)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
 }
 
 func (a *App) handleContracts(w http.ResponseWriter, r *http.Request, ac authz.Context) {

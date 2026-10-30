@@ -48,6 +48,16 @@ when { principal.roles.contains("approver") && context has aal && context.aal >=
 
 permit (
   principal is User,
+  action == Action::"export:bulk",
+  resource
+)
+when {
+  (principal.roles.contains("approver") || principal.roles.contains("tprm_program_manager") || principal.roles.contains("auditor")) &&
+  context has aal && context.aal >= 2
+};
+
+permit (
+  principal is User,
   action == Action::"admin:any",
   resource
 )

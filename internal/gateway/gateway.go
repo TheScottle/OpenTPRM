@@ -22,13 +22,19 @@ const (
 type Gateway struct {
 	PDP      *authz.PDP
 	Registry *mcp.Registry
+	Budgets  *BudgetTracker
+	Tasks    *mcp.TaskStore
 	mu       sync.Mutex
 	killed   map[string]bool
 	aiOff    bool
 }
 
 func New(pdp *authz.PDP, reg *mcp.Registry) *Gateway {
-	return &Gateway{PDP: pdp, Registry: reg, killed: map[string]bool{}}
+	return &Gateway{
+		PDP: pdp, Registry: reg, killed: map[string]bool{},
+		Budgets: NewBudgetTracker(DefaultBudgetLimits()),
+		Tasks:   mcp.NewTaskStore(),
+	}
 }
 
 func (g *Gateway) KillClient(id string) {
@@ -72,6 +78,16 @@ func (g *Gateway) Call(ctx context.Context, agent, delegator authz.Context, tool
 	}
 	if tool.Scope != "" && !has(agent.Scopes, tool.Scope) {
 		return CallResult{Error: "insufficient_scope", Status: 403}
+	}
+	subject := agent.ClientID
+	if subject == "" {
+		subject = agent.PrincipalID
+	}
+	if g.Budgets != nil {
+		okBudget, reason := g.Budgets.Allow(subject, tool.Tier == TierT2)
+		if !okBudget {
+			return CallResult{Error: reason, Status: 429}
+		}
 	}
 	dec := authz.DualAuthorize(g.PDP, agent, delegator, tool.Action, authz.Resource{Type: tool.ResourceType, ID: "*"})
 	if !dec.Allow {

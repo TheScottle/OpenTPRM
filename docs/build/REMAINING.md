@@ -2,7 +2,7 @@
 
 Ordered by security-first milestone. Each slice lists concrete file targets and exit tests. Do not claim a milestone complete unless its exit gate truly passes.
 
-**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**; **instance/response/review/scoring store+HTTP + AT-15 delta HTTP E2E**. M3: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**; blob Get round-trip; sandbox path allow-list / empty-env; **Landlock/seccomp probe + child hooks (degraded OK in CI)**; **evidence page text storage + safe viewer stubs**; **SOC review JSON Schema (`api/schemas/soc-review-v1.json`)**; **ValidateUpload fuzz stub + seed corpus**. M4: **finding status transitions + remediation plans**; **risk register persistence**; **contracts clause defaults + obligations/clients flow-down**; **monitoring dispositions**; **offboarding checklist**; **legal-hold + retention helpers (blocks shred)**; **`opentprm backup` / `restore --verify-only` (ARC-013)**; **`/agent/call` wired through Agent Gateway**. M5: Idempotency-Key middleware + vendor ETags; **store-backed findings/contracts/monitoring/suggestions/change-requests/agent-clients/models**; expanded OpenAPI. oapi-codegen still open.
+**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**; **instance/response/review/scoring store+HTTP + AT-15 delta HTTP E2E**. M3: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**; blob Get round-trip; sandbox path allow-list / empty-env; **Landlock/seccomp probe + child hooks (degraded OK in CI)**; **evidence page text storage + safe viewer stubs**; **SOC review JSON Schema (`api/schemas/soc-review-v1.json`)**; **ValidateUpload fuzz stub + seed corpus**. M4: **finding status transitions + remediation plans**; **risk register persistence**; **contracts clause defaults + obligations/clients flow-down**; **monitoring dispositions**; **offboarding checklist**; **legal-hold + retention helpers (blocks shred)**; **`opentprm backup` / `restore --verify-only` (ARC-013)**; **`/agent/call` wired through Agent Gateway**; **exceptions create/list + SOD-2 approve with signed decision**; **reports/exports with GEN-012 markings + sensitive step-up**. M5: Idempotency-Key middleware + vendor ETags; **store-backed findings/contracts/monitoring/suggestions/change-requests/agent-clients/models**; expanded OpenAPI (exceptions/reports/exports). oapi-codegen still open. M6 start: **opaque hashed OAuth access tokens + DPoP header presence stub**; **MCP Tasks extension stubs**; **gateway budgets (AI-032)**. M9 start: **analyst home + vendors list `web/templates` (html/template, CSP-safe CSS)**.
 
 ## M0 — Secure skeleton (auth essentials still open)
 
@@ -23,7 +23,7 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M1 — Inventory and intake
 
-**Done (partial):** vendor create/list, intake create/submit + tiering, assessment create/transition, shred tombstone; INV-001–009 store coverage; nested contacts/engagements/history/fourth-party/CSV import; custom fields; AT-01 HTTP E2E; expanded authz matrix rows for M1 routes.
+**Done (partial):** vendor create/list, intake create/submit + tiering, assessment create/transition, shred tombstone; INV-001–009 store coverage; nested contacts/engagements/history/fourth-party/CSV import; custom fields; AT-01 HTTP E2E; expanded authz matrix rows for M1 routes; **vendors list UI template**.
 
 | Slice | File targets | Exit tests |
 | --- | --- | --- |
@@ -35,9 +35,9 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 | Next action due (INV-009) | `next_action.go` RecalculateNextActionDue | `TestINV_009_NextActionDueEarliest` |
 | Bulk CSV import quarantine | `internal/store/import_csv.go` (no formula eval) | `TestINV_008_*` |
 | Route authz matrix M1 | expand `matrix_test.go` for all M1 routes × roles | SEC-AZ-004 covers M1 |
-| Intake E2E + UI queues | handlers + minimal templates | `TestAT_01_IntakeSubmitHTTPE2E`; ASM-001 already present |
+| Intake E2E + UI queues | handlers + minimal templates | `TestAT_01_IntakeSubmitHTTPE2E`; ASM-001 already present; intake UI queues still open |
 
-**Not claimed complete until:** intake UI queue screens, every M1 route exercised in an HTTP authz matrix (store/Cedar matrix expanded; UI still missing).
+**Not claimed complete until:** intake UI queue screens, every M1 route exercised in an HTTP authz matrix (store/Cedar matrix expanded; intake UI still missing).
 
 ## M2 — Questionnaires
 
@@ -66,37 +66,40 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M4 — Risk / contracts / ops
 
-**Done (partial):** finding transitions + remediation plans; risk register persist/list; clients/requirements flow-down → obligations; contract clause defaults; monitoring dispositions; offboarding checklist; legal holds + retention helpers (shred blocked); backup CLI + ARC-013 verify-only drill; `/agent/call` via gateway.
+**Done (partial):** finding transitions + remediation plans; risk register persist/list; clients/requirements flow-down → obligations; contract clause defaults; monitoring dispositions; offboarding checklist; legal holds + retention helpers (shred blocked); backup CLI + ARC-013 verify-only drill; `/agent/call` via gateway; **exceptions create/list + SOD-2 + signed approve path**; **reports/exports with GEN-012 markings + sensitive step-up gate**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Findings/remediation, risk register | `domain/finding`, `store/risk_lifecycle.go`, handlers `:transition` / remediation / `/risk-register` | `TestFND_*`, `TestFND_RSK_*` |
 | Contracts/obligations/clients | `domain/contract`, obligations/clients APIs | `TestCON_*` |
 | Monitoring + offboarding | `domain/monitoring`, `domain/offboarding`, disposition + checklist APIs | `TestMON_*`, `TestOFF_*` |
-| Reports/exports/markings | export pipeline | RPT + step-up for bulk (**still open**) |
+| Reports/exports/markings | `domain/reporting`, `store/exports.go`, `/reports/{type}`, `/exports` | `TestGEN_012_*`, `TestRPT_*`, `TestRPT_EXC_ReportsExportsExceptionsHTTP` |
 | Retention/legal hold + backup CLI | `store/retention.go`, `internal/backup/`, `opentprm backup\|restore --verify-only` | `TestARC_002_*`, `TestARC_013_*`, AT-14 (hold-aware) |
-| Exceptions signed decisions | approve path signs payload | decision verify unit exists; full EXC register/UI still open |
+| Exceptions signed decisions | `store/exceptions.go` create/list/approve + SOD-2 | `TestEXC_CreateListApprove_SOD2`, HTTP path; exception UI still open |
 | Full restore write path | `opentprm restore` without `--verify-only` | still refused (verify-only only) |
+| Committee PDF / second approver on bulk | PDF pack + dual-control | still open |
 
 ## M5 — OpenAPI contract
 
-**Done (partial):** expanded OpenAPI catalog (instances, evidence pages/SOC, catalog POSTs, M4 risk/contracts/offboarding/legal-hold paths); vendor ETags; Idempotency-Key middleware with replay header; **store-backed catalog handlers**; `/agent/tools` + **`/agent/call` via gateway**.
+**Done (partial):** expanded OpenAPI catalog (instances, evidence pages/SOC, catalog POSTs, M4 risk/contracts/offboarding/legal-hold paths, **exceptions/reports/exports**); vendor ETags; Idempotency-Key middleware with replay header; **store-backed catalog handlers**; `/agent/tools` + **`/agent/call` via gateway**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Complete OpenAPI §10.2 | `api/openapi.yaml` | schema lint (expanded; full §10.2 still open) |
-| oapi-codegen stubs | generated server types | compile |
+| oapi-codegen stubs | generated server types | still open |
 | ETags / Idempotency / cursors | middleware + store row_version | contract tests (idempotency covered in AT-01 HTTP) |
 | Replace empty/501 handlers | `handlers_domain.go` + `store/catalog.go` | catalog paths store-backed; `/agent/call` gateway-backed |
 
 ## M6 — OAuth AS + MCP
 
+**Done (partial):** PRM + AS metadata; **opaque 256-bit access tokens stored hashed**; **DPoP header presence stub on issue/verify**; **`/oauth/token` client_credentials stub**; **MCP Tasks `tasks/get|update|cancel` stubs (principal-bound)**; **gateway budget tracker wired into Call (AI-032)**.
+
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Real AS (fosite or ADR alt) | `internal/authn/as.go`, PKCE/DPoP/mTLS | OAuth conformance smoke |
-| MCP SDK conformance + Tasks | `internal/mcp/` | AT-03 + MCP tests |
-| Budgets/kill switches persisted | settings/DB | AI budget tests |
-| Change-request approval UI | templates + step-up | AT-05/AT-06 |
+| Real AS (fosite or ADR alt) | `internal/authn/as.go`, PKCE/DPoP/mTLS | `TestAI_023_*`; full PKCE authorize UI / fosite / proof verify still open |
+| MCP SDK conformance + Tasks | `internal/mcp/` | AT-03 + `TestAI_005_TasksExtensionStubs`; full SDK conformance still open |
+| Budgets/kill switches persisted | gateway budgets in-memory; DB counters open | `TestAI_032_BudgetWiredOnGateway` |
+| Change-request approval UI | templates + step-up | AT-05/AT-06 still open |
 
 ## M7 — AI registries and evals
 
@@ -116,16 +119,18 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M9 — UI, NFR, release
 
+**Done (partial):** **analyst home + vendors list via `html/template` + `/static/app.css` (CSP-safe, no inline JS)**.
+
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Real UI (`html/template`) | `web/templates`, `web/static` | smoke screenshots |
+| Real UI (`html/template`) | `web/templates`, `web/static` | `TestUI_AnalystHomeAndVendors`; more screens / screenshots still open |
 | NFR tests | load/latency budgets | NFR suite |
 | SBOM/cosign/SLSA + handbook/threat model | CI + `docs/` | TST-001–010 gates |
 
 ## Cross-cutting (always open until M9)
 
-- `web/templates` empty → real UI
 - Dev `X-OpenTPRM-*` headers → session/OIDC/DPoP only in production
 - Store incomplete vs migrations → close field gaps per milestone
 - `evals/` empty → fill in M7; `api/schemas` started (SOC review)
 - Traceability: keep `docs/traceability/MUST-map.md` updated as tests land
+- oapi-codegen + full OpenAPI §10.2 still open

@@ -16,6 +16,7 @@ tags:
   - name: exceptions
   - name: contracts
   - name: monitoring
+  - name: reports
   - name: agents
   - name: admin
   - name: audit
@@ -430,16 +431,58 @@ paths:
       operationId: persistRiskResult
       responses:
         "201": { description: Created }
+  /exceptions:
+    get:
+      tags: [exceptions]
+      summary: List exceptions register
+      operationId: listExceptions
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [exceptions]
+      summary: Create exception request
+      operationId: createException
+      responses:
+        "201": { description: Created }
   /exceptions/{id}:approve:
     post:
       tags: [exceptions]
-      summary: Approve exception (humans only, step-up)
+      summary: Approve exception (humans only, SOD-2, signed decision)
       operationId: approveException
       parameters:
         - $ref: "#/components/parameters/ID"
       responses:
         "200": { description: Signed decision }
-        "403": { description: Forbidden }
+        "403": { description: Forbidden (incl. SOD-2 requester==approver) }
+  /reports/{type}:
+    get:
+      tags: [reports]
+      summary: Generate marked report (GEN-012)
+      operationId: getReport
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema: { type: string, enum: [inventory, exceptions, committee, audit_pack, kri] }
+        - name: classification
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: Marked document }
+  /exports:
+    get:
+      tags: [reports]
+      summary: List export jobs
+      operationId: listExports
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [reports]
+      summary: Create export (sensitive bulk needs step-up)
+      operationId: createExport
+      responses:
+        "201": { description: Created }
+        "401": { description: Step-up required }
   /contracts:
     get:
       tags: [contracts]

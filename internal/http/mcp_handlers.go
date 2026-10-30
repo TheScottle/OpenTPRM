@@ -3,7 +3,10 @@ package httpserver
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
+	"time"
 
+	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
 	"github.com/TheScottle/OpenTPRM/internal/gateway"
 	"github.com/TheScottle/OpenTPRM/internal/mcp"
@@ -18,11 +21,26 @@ func (a *App) ensureGateway() *gateway.Gateway {
 	return a.GW
 }
 
+func (a *App) ensureAS() *authn.AuthorizationServer {
+	if a.AS != nil {
+		return a.AS
+	}
+	ttl := authn.AccessTokenTTL
+	if a.Cfg.Agents.OAuth.AccessTokenTTL != "" {
+		if d, err := time.ParseDuration(a.Cfg.Agents.OAuth.AccessTokenTTL); err == nil {
+			ttl = d
+		}
+	}
+	a.AS = authn.NewAuthorizationServer(ttl, a.Cfg.Agents.OAuth.RequireSenderConstraint)
+	return a.AS
+}
+
 func (a *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 	gw := a.ensureGateway()
 	s := &mcp.Server{
 		Origins: []string{a.Cfg.Server.PublicBaseURL},
 		ListFn:  gw.VisibleTools,
+		Tasks:   gw.Tasks,
 		CallFn: func(req *http.Request, agent, delegator authz.Context, tool string, args json.RawMessage) (json.RawMessage, int, string) {
 			res := gw.Call(req.Context(), agent, delegator, tool, args)
 			if !res.OK {
@@ -53,5 +71,64 @@ func (a *App) handleASMeta(w http.ResponseWriter, r *http.Request) {
 		"code_challenge_methods_supported": []string{"S256"},
 		"dpop_signing_alg_values_supported": []string{"ES256", "EdDSA"},
 		"grant_types_supported": []string{"authorization_code", "client_credentials", "refresh_token"},
+		"token_endpoint_auth_methods_supported": []string{"private_key_jwt", "none"},
+	})
+}
+
+func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
+	// PKCE authorize UI remains open; stub returns metadata for smoke tests.
+	writeJSON(w, 501, map[string]any{
+		"error": "authorization_pending",
+		"error_description": "interactive authorize UI not yet implemented; use client_credentials token stub",
+	})
+}
+
+func (a *App) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeProblem(w, 405, "method_not_allowed", "POST required")
+		return
+	}
+	as := a.ensureAS()
+	_ = r.ParseForm()
+	grant := r.FormValue("grant_type")
+	if grant == "" {
+		grant = "client_credentials"
+	}
+	if grant != "client_credentials" {
+		writeJSON(w, 400, map[string]any{"error": "unsupported_grant_type"})
+		return
+	}
+	clientID := r.FormValue("client_id")
+	if clientID == "" {
+		clientID = "dev-client"
+	}
+	audience := r.FormValue("resource")
+	if audience == "" {
+		audience = a.Cfg.Server.PublicBaseURL + "/mcp"
+	}
+	scopes := strings.Fields(r.FormValue("scope"))
+	if len(scopes) == 0 {
+		scopes = []string{"tprm.read"}
+	}
+	// DPoP thumbprint stub: presence of DPoP header is enough for issue; full JWK thumbprint later.
+	dpopThumb := ""
+	if dpop := strings.TrimSpace(r.Header.Get("DPoP")); dpop != "" {
+		dpopThumb = authn.HashToken(dpop)[:32]
+	}
+	issued, err := as.IssueOpaqueAccessToken(clientID, clientID, audience, scopes, dpopThumb)
+	if err != nil {
+		status := 400
+		if err == authn.ErrMissingDPoP {
+			status = 401
+			w.Header().Set("WWW-Authenticate", `DPoP error="invalid_dpop_proof"`)
+		}
+		writeJSON(w, status, map[string]any{"error": "invalid_request", "error_description": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"access_token": issued.AccessToken,
+		"token_type":   issued.TokenType,
+		"expires_in":   issued.ExpiresIn,
+		"scope":        issued.Scope,
 	})
 }

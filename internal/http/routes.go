@@ -56,6 +56,10 @@ func (a *App) routeAPIInner(w http.ResponseWriter, r *http.Request) {
 		a.handleRisk(w, r, ac)
 	case path == "/exceptions" || strings.HasPrefix(path, "/exceptions"):
 		a.handleExceptions(w, r, ac)
+	case path == "/reports" || strings.HasPrefix(path, "/reports/"):
+		a.handleReports(w, r, ac)
+	case path == "/exports" || strings.HasPrefix(path, "/exports"):
+		a.handleExports(w, r, ac)
 	case path == "/contracts" || strings.HasPrefix(path, "/contracts"):
 		a.handleContracts(w, r, ac)
 	case path == "/obligations" || strings.HasPrefix(path, "/obligations"):

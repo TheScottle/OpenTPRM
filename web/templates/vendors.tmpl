@@ -1,0 +1,23 @@
+{{define "vendors.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>Vendors</h1>
+  <p class="lede">Third-party inventory visible to your session.</p>
+  {{if .Vendors}}
+  <table class="list">
+    <thead><tr><th>Legal name</th><th>Status</th><th>Tier</th><th>Classification</th></tr></thead>
+    <tbody>
+    {{range .Vendors}}
+      <tr>
+        <td>{{.LegalName}}</td>
+        <td>{{.Status}}</td>
+        <td>{{.Tier}}</td>
+        <td>{{.Classification}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No vendors yet. Create one via <code>POST /api/v1/vendors</code>.</p>
+  {{end}}
+</section>
+{{template "footer" .}}{{end}}

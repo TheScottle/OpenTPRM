@@ -27,6 +27,12 @@
 | ARC-001 / ARC-002 / ARC-004 | `TestARC_002_LegalHoldBlocksShred` |
 | ARC-010 / ARC-013 | `TestARC_013_RestoreVerifyOnly` |
 | AT-14 / ARC-003 | `TestAT_14_ShredLeavesTombstone`, `TestARC_002_LegalHoldBlocksShred` |
+| GEN-012 / RPT-002 / RPT-004 | `TestGEN_012_ConfigurableMarkings`, `TestRPT_004_SensitiveClassification`, `TestRPT_ExportMarkingsGEN012`, `TestRPT_EXC_ReportsExportsExceptionsHTTP` |
+| EXC-001 / EXC-002 / SOD-2 | `TestEXC_CreateListApprove_SOD2`, `TestRPT_EXC_ReportsExportsExceptionsHTTP`, `TestSignVerifyRoundTrip` |
+| AI-023 | `TestAI_023_OpaqueTokenIssueVerifyHashed`, `TestAI_023_DPoPHeaderPresenceStub`, `TestOAuth_TokenIssueRequiresDPoP` |
+| AI-005 | `TestAI_005_TasksExtensionStubs` |
+| AI-032 | `TestAI_032_BudgetWiredOnGateway` |
+| UI analyst home | `TestUI_AnalystHomeAndVendors` |
 | AT-02 | `TestAT_02_RestrictedRecord404Semantics` |
 | AT-03 | `TestAT_03_NoApproveToolListed` |
 | AT-09 | `TestAT_09_HeaderBodyNameMismatch` |
