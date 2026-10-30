@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -19,6 +20,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/blob"
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
+	"github.com/TheScottle/OpenTPRM/internal/domain/exception"
 	"github.com/TheScottle/OpenTPRM/internal/gateway"
 	"github.com/TheScottle/OpenTPRM/internal/portal"
 	"github.com/TheScottle/OpenTPRM/internal/store"
@@ -174,9 +176,25 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 		a.handleIntakeQueueUI(w, r, ac)
 	case r.URL.Path == "/answer-library" || r.URL.Path == "/answer-library/":
 		a.handleAnswerLibraryUI(w, r, ac)
+	case r.URL.Path == "/exceptions" || r.URL.Path == "/exceptions/":
+		a.handleExceptionUI(w, r, ac)
+	case r.URL.Path == "/me/agent-grants" || r.URL.Path == "/me/agent-grants/":
+		a.handleAgentGrantsUI(w, r, ac)
+	case r.URL.Path == "/admin/keys" || r.URL.Path == "/admin/keys/":
+		a.handleAdminStubUI(w, r, ac, "keys")
+	case r.URL.Path == "/admin/backups" || r.URL.Path == "/admin/backups/":
+		a.handleAdminStubUI(w, r, ac, "backups")
 	default:
 		if strings.HasPrefix(r.URL.Path, "/change-requests/") {
 			a.handleChangeRequestUI(w, r, ac)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/exceptions/") {
+			a.handleExceptionUI(w, r, ac)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/me/agent-grants/") {
+			a.handleAgentGrantsUI(w, r, ac)
 			return
 		}
 		http.NotFound(w, r)
@@ -219,6 +237,136 @@ func (a *App) handleAnswerLibraryUI(w http.ResponseWriter, r *http.Request, ac a
 		"VendorID": vendorID, "VendorName": vname, "Entries": entries, "Vendors": vendors,
 	}
 	if err := a.Templates.ExecuteTemplate(w, "answer_library.tmpl", data); err != nil {
+		writeProblem(w, 500, "error", "template render failed")
+	}
+}
+
+func (a *App) handleExceptionUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	ctx := authz.WithContext(r.Context(), ac)
+	path := strings.TrimPrefix(r.URL.Path, "/exceptions/")
+	path = strings.Trim(path, "/")
+
+	if r.Method == http.MethodPost && strings.HasSuffix(path, ":approve") {
+		if ac.PrincipalType == authz.PrincipalAgent {
+			writeProblem(w, 403, "forbidden", "agents cannot approve")
+			return
+		}
+		id := strings.TrimSuffix(path, ":approve")
+		if !a.authorize(w, ac, authz.ActionExceptionApprove, authz.Resource{Type: "exception", ID: id}) {
+			return
+		}
+		if a.Store == nil || a.Keyring == nil {
+			writeProblem(w, 503, "unavailable", "store unavailable")
+			return
+		}
+		residual := r.FormValue("residual_rating")
+		if residual == "" {
+			residual = "high"
+		}
+		conds := []string{}
+		if c := strings.TrimSpace(r.FormValue("conditions")); c != "" {
+			conds = append(conds, c)
+		}
+		payload := exception.Payload{
+			ExceptionID:    id,
+			ApproverID:     ac.PrincipalID,
+			ResidualRating: residual,
+			Conditions:     conds,
+			DecidedAt:      time.Now().UTC(),
+			EvidenceHashes: []string{},
+		}
+		body, err := payload.CanonicalJSON()
+		if err != nil {
+			writeProblem(w, 500, "error", "canonical failed")
+			return
+		}
+		sig, err := a.Keyring.SignEd25519(body)
+		if err != nil {
+			writeProblem(w, 500, "error", "sign failed")
+			return
+		}
+		sigHex := hex.EncodeToString(sig)
+		_, err = a.Store.ApproveException(ctx, id, ac.PrincipalID, payload, sigHex)
+		if err != nil {
+			status := 422
+			if err == store.ErrSOD2RequesterApprover {
+				status = 403
+			}
+			writeProblem(w, status, "approve_failed", err.Error())
+			return
+		}
+		http.Redirect(w, r, "/exceptions", http.StatusSeeOther)
+		return
+	}
+
+	var items []store.ExceptionRecord
+	if a.Store != nil && ac.Valid() {
+		items, _ = a.Store.ListExceptions(ctx, "")
+	}
+	data := map[string]any{
+		"Title": "Exceptions", "User": ac.PrincipalID, "Items": items, "CanApprove": ac.HasRole("approver"),
+	}
+	if err := a.Templates.ExecuteTemplate(w, "exceptions.tmpl", data); err != nil {
+		writeProblem(w, 500, "error", "template render failed")
+	}
+}
+
+func (a *App) handleAgentGrantsUI(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	ctx := authz.WithContext(r.Context(), ac)
+	path := strings.TrimPrefix(r.URL.Path, "/me/agent-grants/")
+	path = strings.Trim(path, "/")
+
+	if r.Method == http.MethodPost && strings.HasSuffix(path, ":revoke") {
+		id := strings.TrimSuffix(path, ":revoke")
+		if a.Store == nil {
+			writeProblem(w, 503, "unavailable", "store unavailable")
+			return
+		}
+		if _, err := a.Store.RevokeAgentClientForOwner(ctx, id, ac.PrincipalID); err != nil {
+			writeProblem(w, 422, "revoke_failed", err.Error())
+			return
+		}
+		http.Redirect(w, r, "/me/agent-grants", http.StatusSeeOther)
+		return
+	}
+
+	var items []store.AgentClient
+	if a.Store != nil && ac.Valid() {
+		all, _ := a.Store.ListAgentClients(ctx)
+		for _, c := range all {
+			if c.OwnerUserID == ac.PrincipalID {
+				items = append(items, c)
+			}
+		}
+	}
+	data := map[string]any{
+		"Title": "My agent grants", "User": ac.PrincipalID, "Items": items,
+	}
+	if err := a.Templates.ExecuteTemplate(w, "agent_grants.tmpl", data); err != nil {
+		writeProblem(w, 500, "error", "template render failed")
+	}
+}
+
+func (a *App) handleAdminStubUI(w http.ResponseWriter, r *http.Request, ac authz.Context, kind string) {
+	if !a.authorize(w, ac, authz.ActionAdminAny, authz.Resource{Type: "admin", ID: "*"}) {
+		return
+	}
+	heading, lede, note := "Admin", "", ""
+	switch kind {
+	case "keys":
+		heading = "Admin keys"
+		lede = "Signing and encryption key inventory stub. Rotations are dual-controlled."
+		note = "Key actions dual-controlled; rotate API pending. Prefer opentprm sealed start + keyring."
+	case "backups":
+		heading = "Admin backups"
+		lede = "Backup and restore drill status (ARC-013 verify-only)."
+		note = "Use opentprm backup|restore --verify-only. Full restore write path remains refused."
+	}
+	data := map[string]any{
+		"Title": heading, "User": ac.PrincipalID, "Heading": heading, "Lede": lede, "Note": note,
+		"Items": []map[string]string{},
+	}
+	if err := a.Templates.ExecuteTemplate(w, "admin.tmpl", data); err != nil {
 		writeProblem(w, 500, "error", "template render failed")
 	}
 }

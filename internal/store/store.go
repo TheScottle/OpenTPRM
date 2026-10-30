@@ -15,6 +15,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
 	"github.com/TheScottle/OpenTPRM/migrations"
 
+	"github.com/ncruces/go-sqlite3"
 	"github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
 	_ "github.com/ncruces/go-sqlite3/vfs/xts"
@@ -39,37 +40,40 @@ func Open(dataDir string, keyring *crypto.Keyring) (*Store, error) {
 	dbPath := filepath.Join(dataDir, "opentprm.db")
 	// Use xts VFS; do not put key in URI (ADR-003 / SEC).
 	dsn := fmt.Sprintf("file:%s?vfs=xts&_pragma=busy_timeout(5000)", filepath.ToSlash(dbPath))
-	db, err := driver.Open(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
-	}
 
 	hexKey, err := keyring.DBHexKey()
 	if err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	if len(hexKey) != 128 || !isHex(hexKey) {
-		_ = db.Close()
 		return nil, fmt.Errorf("invalid db key material")
 	}
-	// Set key immediately after open (never via DSN). Hex-only validated above.
-	if _, err := db.Exec(`PRAGMA hexkey='` + hexKey + `'`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("pragma hexkey: %w", err)
-	}
-	pragmas := []string{
-		`PRAGMA secure_delete=ON`,
-		`PRAGMA foreign_keys=ON`,
-		`PRAGMA temp_store=MEMORY`,
-		`PRAGMA journal_mode=WAL`,
-	}
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("%s: %w", p, err)
+	// Apply hexkey + session pragmas on every pooled connection (never via DSN).
+	// A one-shot Exec after Open only keys the first connection; concurrent Ping
+	// would otherwise open unkeyed pool conns and break later writes.
+	initConn := func(conn *sqlite3.Conn) error {
+		if err := conn.Exec(`PRAGMA hexkey='` + hexKey + `'`); err != nil {
+			return fmt.Errorf("pragma hexkey: %w", err)
 		}
+		for _, p := range []string{
+			`PRAGMA secure_delete=ON`,
+			`PRAGMA foreign_keys=ON`,
+			`PRAGMA temp_store=MEMORY`,
+			`PRAGMA journal_mode=WAL`,
+		} {
+			if err := conn.Exec(p); err != nil {
+				return fmt.Errorf("%s: %w", p, err)
+			}
+		}
+		return nil
 	}
+	db, err := driver.Open(dsn, initConn)
+	if err != nil {
+		return nil, fmt.Errorf("open db: %w", err)
+	}
+	// SQLite + XTS: single writer; keep the pool at one conn.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	s := &Store{db: db, keyring: keyring, path: dbPath}
 	if err := s.Migrate(); err != nil {

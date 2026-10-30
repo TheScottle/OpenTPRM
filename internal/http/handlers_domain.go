@@ -1785,12 +1785,55 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request, ac authz.Conte
 }
 
 func (a *App) handleMeAgentGrants(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	ctx := authz.WithContext(r.Context(), ac)
+	if strings.Contains(path, ":revoke") && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
+		id := extractID(path, "/me/agent-grants/", ":revoke")
+		if a.Store == nil {
+			writeProblem(w, 503, "unavailable", "store unavailable")
+			return
+		}
+		got, err := a.Store.RevokeAgentClientForOwner(ctx, id, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "revoke_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
+	if r.Method == http.MethodDelete && strings.HasPrefix(path, "/me/agent-grants/") {
+		id := strings.TrimPrefix(path, "/me/agent-grants/")
+		id = strings.Trim(id, "/")
+		if id == "" {
+			writeProblem(w, 400, "bad_request", "grant id required")
+			return
+		}
+		if a.Store == nil {
+			writeProblem(w, 503, "unavailable", "store unavailable")
+			return
+		}
+		got, err := a.Store.RevokeAgentClientForOwner(ctx, id, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "revoke_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
+	if r.Method != http.MethodGet {
 		writeProblem(w, 405, "method_not_allowed", "method not allowed")
 		return
 	}
-	// Stub list/revoke of the caller's agent grants (§10.2).
-	writeJSON(w, 200, map[string]any{"items": []any{}, "principal_id": ac.PrincipalID})
+	items := []store.AgentClient{}
+	if a.Store != nil && ac.Valid() {
+		var err error
+		items, err = a.Store.ListAgentClientsForOwner(ctx, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]any{"items": items, "principal_id": ac.PrincipalID})
 }
 
 func (a *App) handleTasks(w http.ResponseWriter, r *http.Request, ac authz.Context) {

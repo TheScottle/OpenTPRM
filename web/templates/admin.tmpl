@@ -1,0 +1,19 @@
+{{define "admin.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>{{.Heading}}</h1>
+  <p class="lede">{{.Lede}}</p>
+  <p class="meta">{{.Note}}</p>
+  {{if .Items}}
+  <table class="list">
+    <thead><tr><th>ID</th><th>Detail</th></tr></thead>
+    <tbody>
+    {{range .Items}}
+      <tr><td class="mono">{{.ID}}</td><td>{{.Detail}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No entries yet. Dual-control key actions and backup drills remain CLI/API-gated.</p>
+  {{end}}
+</section>
+{{template "footer" .}}{{end}}

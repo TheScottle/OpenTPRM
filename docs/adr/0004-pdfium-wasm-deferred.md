@@ -8,7 +8,7 @@ Accepted (deferral)
 
 M3 evidence sandbox needs PDF text extract and page counts without CGO (`CGO_ENABLED=0`, distroless static binary). `github.com/klippa-app/go-pdfium` offers a wazero/WebAssembly path that avoids CGO, but embeds `pdfium.wasm` (~5.6 MiB) into the module tree. Pulling that into `opentprm` would inflate release artifacts and slow CI smoke builds relative to the current TXT/JSON extract path.
 
-`pdfcpu` (Apache-2.0) was evaluated for committee PDF packs and page counts; its module tree is large (~29 MiB source) for a first slice. A marked text/ZIP export pack satisfies RPT committee packaging without that weight.
+`pdfcpu` (Apache-2.0, **CGO-free** pure Go) was re-evaluated for committee PDF packs and page counts (`github.com/pdfcpu/pdfcpu` v0.16.x). License and CGO constraints are satisfied, but the module tree remains ~29 MiB source — too heavy for the current static binary / CI smoke budget. A marked text/ZIP export pack satisfies RPT committee packaging without that weight. Revisit when binary-size budget allows a slim create-only import path.
 
 ## Decision
 

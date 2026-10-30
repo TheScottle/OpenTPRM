@@ -468,6 +468,52 @@ func (s *Store) ListAgentClients(ctx context.Context) ([]AgentClient, error) {
 	return out, rows.Err()
 }
 
+// ListAgentClientsForOwner returns agent clients owned by userID (agent grants).
+func (s *Store) ListAgentClientsForOwner(ctx context.Context, userID string) ([]AgentClient, error) {
+	all, err := s.ListAgentClients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []AgentClient
+	for _, c := range all {
+		if c.OwnerUserID == userID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// RevokeAgentClientForOwner sets status=revoked when the caller owns the client (SEC-AN-005).
+func (s *Store) RevokeAgentClientForOwner(ctx context.Context, id, ownerUserID string) (AgentClient, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return AgentClient{}, err
+	}
+	now := nowUTC()
+	res, err := s.db.ExecContext(ctx, `UPDATE agent_clients SET status='revoked', updated_at=?, updated_by=?
+		WHERE id=? AND owner_user_id=? AND status!='revoked'`, now, ownerUserID, id, ownerUserID)
+	if err != nil {
+		return AgentClient{}, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return AgentClient{}, fmt.Errorf("agent grant not found or not owned")
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_user_id, client_type, status, max_classification, created_by, updated_by, created_at, updated_at
+		FROM agent_clients WHERE id=?`, id)
+	if err != nil {
+		return AgentClient{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return AgentClient{}, fmt.Errorf("agent grant not found")
+	}
+	var c AgentClient
+	if err := rows.Scan(&c.ID, &c.Name, &c.OwnerUserID, &c.ClientType, &c.Status, &c.MaxClassification, &c.CreatedBy, &c.UpdatedBy, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		return AgentClient{}, err
+	}
+	return c, nil
+}
+
 // CreateModelEndpoint inserts a model endpoint.
 func (s *Store) CreateModelEndpoint(ctx context.Context, m ModelEndpoint) (ModelEndpoint, error) {
 	if _, err := RequireAuthz(ctx); err != nil {

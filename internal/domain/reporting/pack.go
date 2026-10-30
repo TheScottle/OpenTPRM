@@ -15,7 +15,7 @@ type PackFile struct {
 }
 
 // BuildMarkedZip builds a ZIP with a MARKING.txt banner plus content files (RPT-002/004).
-// Prefer this over heavy PDF libraries until ADR-0004 is revisited.
+// pdfcpu (Apache-2.0, CGO-free) was re-evaluated for PDF packs; ~29 MiB module tree keeps ZIP (ADR-0004).
 func BuildMarkedZip(classification string, markings map[string]string, files []PackFile) ([]byte, string, error) {
 	marking := ResolveMarking(classification, markings)
 	var buf bytes.Buffer
@@ -53,7 +53,7 @@ func BuildCommitteePack(classification string, markings map[string]string, summa
 	}
 	files := []PackFile{
 		{Name: "committee/summary.txt", Content: summary},
-		{Name: "committee/readme.txt", Content: "OpenTPRM committee export bundle (text pack; PDF via pdfcpu deferred — ADR-0004)."},
+		{Name: "committee/readme.txt", Content: "OpenTPRM committee export bundle (marked text ZIP; pdfcpu PDF deferred — Apache-2.0/CGO-free but ~29MiB module, ADR-0004)."},
 	}
 	return BuildMarkedZip(classification, markings, files)
 }

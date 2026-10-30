@@ -1,0 +1,33 @@
+{{define "exceptions.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>Exceptions</h1>
+  <p class="lede">Risk-acceptance queue. Approvals are signed and enforce SOD-2 (requester cannot approve).</p>
+  {{if .Items}}
+  <table class="list">
+    <thead><tr><th>Scope</th><th>Requester</th><th>Status</th><th>Engagement</th><th>Expires</th><th></th></tr></thead>
+    <tbody>
+    {{range .Items}}
+      <tr>
+        <td>{{.Scope}}</td>
+        <td>{{.Requester}}</td>
+        <td>{{.Status}}</td>
+        <td class="mono">{{.EngagementID}}</td>
+        <td>{{.ExpiresAt}}</td>
+        <td>
+          {{if and $.CanApprove (eq .Status "pending")}}
+          <form method="POST" action="/exceptions/{{.ID}}:approve" class="inline">
+            <input type="hidden" name="residual_rating" value="high">
+            <input type="hidden" name="conditions" value="monitor">
+            <button class="btn" type="submit">Approve</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No exceptions yet. Create via <code>POST /api/v1/exceptions</code>.</p>
+  {{end}}
+</section>
+{{template "footer" .}}{{end}}

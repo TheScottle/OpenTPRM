@@ -22,6 +22,23 @@ opentprm serve --config ./deploy/config.example.yaml
 
 `opentprm init` creates a one-time bootstrap token (mode 0400, 1 hour) used to enroll the first Security Administrator and System Administrator with passkeys.
 
+## Workforce SSO (OIDC / Keycloak)
+
+OpenTPRM uses **authorization code + PKCE** only (SEC-AN-001). No implicit flow.
+
+### Keycloak (self-hosted) sketch
+
+1. Create realm (e.g. `firm`) and confidential or public client `opentprm`.
+2. Valid redirect URI: `https://<listener-a>/api/v1/auth/oidc/callback` (exact match).
+3. Capability config: Standard flow ON; Implicit flow OFF; Direct access grants OFF for workforce SSO.
+4. Client authentication: confidential clients store the secret in `identity.oidc.client_secret_file` (Docker/Podman secret — never env).
+5. Advanced → PKCE Code Challenge Method: **S256** (required).
+6. Authentication flow: require MFA (OTP / WebAuthn). Map MFA into `acr` (e.g. `phr`) and/or `amr` (`otp`, `mfa`) and set `identity.oidc.require_amr` accordingly.
+7. Issuer URL in config: `https://<keycloak>/realms/firm` (Keycloak paths `/protocol/openid-connect/auth|token|certs`).
+8. Group → role mapping via `identity.oidc.group_role_map` (or SCIM later).
+
+Unit coverage: `TestSEC_AN_001_OIDCAuthCodePKCEAgainstFakeIdP` drives a fake IdP httptest with Keycloak-shaped paths.
+
 ## Backup and restore
 
 - `opentprm backup` — online snapshot + age encryption + signed manifest

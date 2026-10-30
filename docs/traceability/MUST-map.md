@@ -23,7 +23,7 @@
 | RPT-004 second approver | `TestRPT_004_ExportSecondApproverSOD`, `TestRPT_004_ExportSecondApproverHTTP` |
 | POR-002 passkey/TOTP | `TestPOR_002_PasskeyEnrollStub`, `TestPOR_002_TOTPEnrollVerifyStub` |
 | OPS-004 | `TestOPS_004_DemoSeedRefusedInProduction`, `TestOPS_004_DemoNotRequested`, `TestOPS_004_RicherSterlingVanceDemoGraphDevOnly` |
-| NFR-001 ready latency smoke | `TestNFR_001_HealthReadyLatencySmoke` |
+| NFR-001 ready latency smoke | `TestNFR_001_HealthReadyLatencySmoke`, `TestNFR_001_ConcurrentReadyAndAuthenticatedAPISmoke` |
 | OpenAPI mux contract | `TestOpenAPI_RoutesHaveMuxRegistrationSmoke` |
 | SEC-UP-002 fuzz | `FuzzValidateUpload` (+ `testdata/fuzz/ValidateUpload`) |
 | FND-002 / FND-003 / FND-005 | `TestFND_002_StatusTransitions`, `TestFND_003_DefaultSLA`, `TestFND_RSK_RemediationAndRegister` |
@@ -35,7 +35,7 @@
 | ARC-010 / ARC-013 | `TestARC_013_RestoreVerifyOnly` |
 | AT-14 / ARC-003 | `TestAT_14_ShredLeavesTombstone`, `TestARC_002_LegalHoldBlocksShred` |
 | GEN-012 / RPT-002 / RPT-004 | `TestGEN_012_ConfigurableMarkings`, `TestRPT_004_SensitiveClassification`, `TestRPT_ExportMarkingsGEN012`, `TestRPT_EXC_ReportsExportsExceptionsHTTP` |
-| EXC-001 / EXC-002 / SOD-2 | `TestEXC_CreateListApprove_SOD2`, `TestRPT_EXC_ReportsExportsExceptionsHTTP`, `TestSignVerifyRoundTrip` |
+| EXC-001 / EXC-002 / SOD-2 | `TestEXC_CreateListApprove_SOD2`, `TestRPT_EXC_ReportsExportsExceptionsHTTP`, `TestSignVerifyRoundTrip`, `TestUI_ExceptionListApprove` |
 | AI-023 | `TestAI_023_OpaqueTokenIssueVerifyHashed`, `TestAI_023_DPoPHeaderPresenceStub`, `TestAI_023_PKCEChallengeStoreAndAuthCode`, `TestAI_023_DPoPProofParseVerify`, `TestOAuth_TokenIssueRequiresDPoP`, `TestOAuth_PKCEAuthorizeCodeAndToken` |
 | AI-005 | `TestAI_005_TasksExtensionStubs` |
 | AI-032 | `TestAI_032_BudgetWiredOnGateway` |
@@ -64,7 +64,10 @@
 | SEC-AN-005 | `TestSEC_AN_005_LogoutRevokes` |
 | SEC-AN-003 | `TestSEC_AN_003_StepUpWindow`, `TestSEC_AN_006_WebAuthnEnrollLoginStepUp` |
 | SEC-AN-006 | `TestSEC_AN_006_ChallengeSingleUseAndThrottle`, `TestSEC_AN_006_WebAuthnEnrollLoginStepUp`, `TestSEC_AN_006_WebAuthnCOSEPublicKeyEnrollAssert` |
-| SEC-AN-001 | `TestSEC_AN_001_OIDCClaimValidation` |
+| SEC-AN-001 | `TestSEC_AN_001_OIDCClaimValidation`, `TestSEC_AN_001_OIDCAuthCodePKCEAgainstFakeIdP` |
+| POR-005 anti-automation | `TestPOR_005_LoginHoneypotAndRateLimit` |
+| UI exceptions | `TestUI_ExceptionListApprove` |
+| UI admin / agent grants | `TestUI_AdminKeysBackupsAndAgentGrantsRevoke` |
 | SEC-WEB CSRF | `TestSEC_WEB_CSRF_OriginReject` |
 | OPS-001 | `TestOPS_001_ProductionRefusesInsecure` |
 | OPS-002 | `TestOPS_002_RefuseSecretEnv` |

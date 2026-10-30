@@ -12,8 +12,9 @@ OpenTPRM requires encryption at rest for the system-of-record database without c
 
 - Module: `github.com/ncruces/go-sqlite3` **v0.36.0**
 - VFS: `github.com/ncruces/go-sqlite3/vfs/xts` (registers VFS name `xts`)
-- Key: 64-byte random DEK from the keyring; applied via `PRAGMA hexkey='...'` immediately after `Open`, never via URI `key`/`hexkey` parameters.
-- PRAGMA after open: `secure_delete=ON`, `foreign_keys=ON`, `temp_store=MEMORY`, WAL mode.
+- Key: 64-byte random DEK from the keyring; applied via `PRAGMA hexkey='...'` in the `driver.Open` connection-init callback (every pooled conn), never via URI `key`/`hexkey` parameters.
+- PRAGMA after open (same init callback): `secure_delete=ON`, `foreign_keys=ON`, `temp_store=MEMORY`, WAL mode.
+- Pool: `SetMaxOpenConns(1)` / `SetMaxIdleConns(1)` — SQLite XTS single-writer.
 
 ## Fallbacks (documented downgrade only)
 

@@ -22,6 +22,7 @@ type Server struct {
 	Passkeys    *PasskeyStore
 	TOTP        *TOTPStore
 	Store       QuestionnaireLister
+	LoginLimit  *RateLimiter
 	// VendorSessions maps session tokens to vendor IDs (stub).
 	sessions map[string]string
 }
@@ -33,6 +34,7 @@ func NewServer(enabled bool) *Server {
 		MagicLinks: NewMagicLinkStore(0),
 		Passkeys:   NewPasskeyStore(),
 		TOTP:       NewTOTPStore(),
+		LoginLimit: NewRateLimiter(5, time.Minute),
 		sessions:   map[string]string{},
 	}
 }
@@ -46,6 +48,9 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.TOTP == nil {
 		s.TOTP = NewTOTPStore()
+	}
+	if s.LoginLimit == nil {
+		s.LoginLimit = NewRateLimiter(5, time.Minute)
 	}
 	if s.sessions == nil {
 		s.sessions = map[string]string{}
@@ -85,16 +90,31 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Honeypot "website" field is hidden via CSS; bots that fill it are rejected (POR-005).
 		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body><h1>Portal login</h1>
 <form method="POST" action="/portal/login">
 <label>Vendor ID <input name="vendor_id" required></label>
 <label>Email <input name="email" type="email" required></label>
+<label style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden">Website <input name="website" tabindex="-1" autocomplete="off"></label>
 <button type="submit">Send magic link</button>
 </form></body></html>`))
 	case http.MethodPost:
 		_ = r.ParseForm()
-		vendorID := strings.TrimSpace(r.FormValue("vendor_id"))
+		if honeypotTriggered(r) {
+			// Soft-fail: look successful to bots without issuing a link.
+			writeJSON(w, 200, map[string]any{"status": "magic_link_issued", "token": "", "hint": "check email"})
+			return
+		}
+		ip := clientIP(r)
 		email := strings.TrimSpace(r.FormValue("email"))
+		vendorID := strings.TrimSpace(r.FormValue("vendor_id"))
+		keys := []string{"ip:" + ip, "email:" + strings.ToLower(email)}
+		for _, k := range keys {
+			if !s.LoginLimit.Allow(k) {
+				http.Error(w, "rate limited", http.StatusTooManyRequests)
+				return
+			}
+		}
 		tok, err := s.MagicLinks.Issue(vendorID, email)
 		if err != nil {
 			http.Error(w, "invalid request", http.StatusBadRequest)

@@ -130,6 +130,53 @@ func TestPOR_002_TOTPEnrollVerifyStub(t *testing.T) {
 	}
 }
 
+func TestPOR_005_LoginHoneypotAndRateLimit(t *testing.T) {
+	s := portal.NewServer(true)
+	s.LoginLimit = portal.NewRateLimiter(2, time.Minute)
+
+	// Honeypot filled → soft success, no token.
+	body := strings.NewReader("vendor_id=v1&email=bot@example.com&website=http://spam.example")
+	req := httptest.NewRequest(http.MethodPost, "/portal/login", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "203.0.113.9:1234"
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("honeypot: %d %s", rr.Code, rr.Body.String())
+	}
+	var issued map[string]any
+	_ = json.Unmarshal(rr.Body.Bytes(), &issued)
+	if tok, _ := issued["token"].(string); tok != "" {
+		t.Fatalf("honeypot must not issue token: %v", issued)
+	}
+
+	postOK := func() *httptest.ResponseRecorder {
+		b := strings.NewReader("vendor_id=v1&email=vendor@example.com")
+		r := httptest.NewRequest(http.MethodPost, "/portal/login", b)
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.RemoteAddr = "203.0.113.10:9999"
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		return w
+	}
+	if w := postOK(); w.Code != 200 {
+		t.Fatalf("login1: %d %s", w.Code, w.Body.String())
+	}
+	if w := postOK(); w.Code != 200 {
+		t.Fatalf("login2: %d %s", w.Code, w.Body.String())
+	}
+	if w := postOK(); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate limit want 429, got %d %s", w.Code, w.Body.String())
+	}
+
+	// Login form includes honeypot field.
+	rrGet := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rrGet, httptest.NewRequest(http.MethodGet, "/portal/login", nil))
+	if rrGet.Code != 200 || !strings.Contains(rrGet.Body.String(), `name="website"`) {
+		t.Fatalf("login form honeypot missing: %s", rrGet.Body.String())
+	}
+}
+
 func TestPOR_VendorQuestionnaireListScoped(t *testing.T) {
 	s := portal.NewServer(true)
 	s.Store = stubLister{items: []store.QuestionnaireInstance{{ID: "qi1", EngagementID: "e1", Status: "draft"}}}

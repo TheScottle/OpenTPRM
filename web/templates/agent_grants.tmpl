@@ -1,0 +1,30 @@
+{{define "agent_grants.tmpl"}}{{template "header" .}}
+<section class="page">
+  <h1>My agent grants</h1>
+  <p class="lede">Agent clients you own. Revoking suspends the client immediately (SEC-AN-005).</p>
+  {{if .Items}}
+  <table class="list">
+    <thead><tr><th>Name</th><th>Status</th><th>Type</th><th>Max classification</th><th></th></tr></thead>
+    <tbody>
+    {{range .Items}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.Status}}</td>
+        <td>{{.ClientType}}</td>
+        <td>{{.MaxClassification}}</td>
+        <td>
+          {{if eq .Status "active"}}
+          <form method="POST" action="/me/agent-grants/{{.ID}}:revoke" class="inline">
+            <button class="btn btn-muted" type="submit">Revoke</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No agent grants for {{.User}}.</p>
+  {{end}}
+</section>
+{{template "footer" .}}{{end}}
