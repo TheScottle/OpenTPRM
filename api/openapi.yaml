@@ -33,6 +33,14 @@ paths:
       operationId: listMyAgentGrants
       responses:
         "200": { description: OK }
+  /auth/bootstrap:
+    post:
+      tags: [admin]
+      summary: Consume one-time bootstrap token; create first Security + System Administrators (OPS-003)
+      operationId: consumeBootstrap
+      responses:
+        "201": { description: Admins created }
+        "409": { description: Token already used or expired }
   /auth/webauthn/enroll/begin:
     post:
       tags: [admin]

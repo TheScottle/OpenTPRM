@@ -11,15 +11,21 @@ Greenfield implementation following the OpenTPRM system description & build spec
 Requires Go 1.24+ (CI uses 1.27).
 
 ```bash
-go test ./...
-go build -o opentprm ./cmd/opentprm
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go build -o opentprm ./cmd/opentprm
 ./opentprm init --data ./data --master-key ./secrets/master.key --tls-dir ./secrets
 ```
+
+## Operator docs
+
+- [`docs/handbook/operator.md`](docs/handbook/operator.md) — checklist, OIDC, backup, Unraid summary
+- [`docs/handbook/first-login.md`](docs/handbook/first-login.md) — bootstrap token, first admins + passkeys, sealed vs ready, `:8443`
+- [`docs/handbook/workflows.md`](docs/handbook/workflows.md) — intake → assessment → evidence → risk → exception → MCP suggest vs decide → offboarding
 
 ## Deploy
 
 - Docker Compose (generic): [`deploy/compose.yaml`](deploy/compose.yaml)
-- **Unraid**: step-by-step guide, CA template, and appdata helper in [`deploy/unraid/README-UNRAID.md`](deploy/unraid/README-UNRAID.md)
+- **Unraid**: step-by-step guide, CA template, and appdata helper in [`deploy/unraid/README-UNRAID.md`](deploy/unraid/README-UNRAID.md) (first login: [`docs/handbook/first-login.md`](docs/handbook/first-login.md))
 
 ## License
 

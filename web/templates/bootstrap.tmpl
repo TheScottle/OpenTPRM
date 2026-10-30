@@ -1,0 +1,50 @@
+{{define "bootstrap.tmpl"}}{{template "header" .}}
+<section class="hero">
+  <p class="eyebrow">OPS-003</p>
+  <h1>First login</h1>
+  <p class="lede">Consume the one-time bootstrap token from <code>opentprm init</code> to create the Security Administrator and System Administrator accounts. Then enroll a passkey for each user.</p>
+</section>
+<section class="panel">
+  <form id="bootstrap-form" class="stack">
+    <label>Bootstrap token
+      <input name="token" type="password" autocomplete="off" required placeholder="64-char hex from data/bootstrap.token">
+    </label>
+    <label>Security Administrator email
+      <input name="security_admin_email" type="email" required>
+    </label>
+    <label>System Administrator email
+      <input name="system_admin_email" type="email" required>
+    </label>
+    <button type="submit" class="btn">Create admins</button>
+  </form>
+  <pre id="bootstrap-result" class="muted" hidden></pre>
+  <p class="note">Token is single-use and expires one hour after init. Emails must differ. After success, call WebAuthn enroll begin/finish for each returned <code>user_id</code> (browser attestation UI is still maturing — API path works today).</p>
+</section>
+<script>
+(function () {
+  var form = document.getElementById("bootstrap-form");
+  var out = document.getElementById("bootstrap-result");
+  form.addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    var fd = new FormData(form);
+    out.hidden = false;
+    out.textContent = "Submitting…";
+    try {
+      var res = await fetch("/api/v1/auth/bootstrap", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          token: fd.get("token"),
+          security_admin_email: fd.get("security_admin_email"),
+          system_admin_email: fd.get("system_admin_email")
+        })
+      });
+      var text = await res.text();
+      out.textContent = res.status + "\n" + text;
+    } catch (e) {
+      out.textContent = String(e);
+    }
+  });
+})();
+</script>
+{{template "footer" .}}{{end}}

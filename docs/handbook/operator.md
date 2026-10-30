@@ -1,5 +1,10 @@
 # OpenTPRM Operator Handbook
 
+Related guides:
+
+- **[First login](first-login.md)** — bootstrap token, admin passkeys, sealed vs ready, Unraid URL (`:8443`)
+- **[Workflows](workflows.md)** — intake → tier → assessment → evidence → findings/risk → exception → MCP suggest vs decide → offboarding
+
 ## Quick start (development)
 
 ```bash
@@ -7,6 +12,8 @@ opentprm init --data ./data --master-key ./secrets/master.key --tls-dir ./secret
 # Write a development config pointing at those paths, then:
 opentprm serve --config ./deploy/config.example.yaml
 ```
+
+Open `https://127.0.0.1:8443/health/ready` (expect `ready`), then `https://127.0.0.1:8443/bootstrap` for first admins. Details: [first-login.md](first-login.md).
 
 ## Production checklist
 
@@ -20,7 +27,7 @@ opentprm serve --config ./deploy/config.example.yaml
 
 ## Bootstrap
 
-`opentprm init` creates a one-time bootstrap token (mode 0400, 1 hour) used to enroll the first Security Administrator and System Administrator with passkeys.
+`opentprm init` creates a one-time bootstrap token (mode 0400, 1 hour). Consume it at `/bootstrap` or `POST /api/v1/auth/bootstrap` to create the first Security Administrator and System Administrator, then enroll passkeys. Full walkthrough: [first-login.md](first-login.md).
 
 ## Workforce SSO (OIDC / Keycloak)
 
@@ -70,12 +77,12 @@ Unraid uses host path mounts under `/mnt/user/appdata/opentprm/` instead of name
    docker build -t opentprm:local -f deploy/Dockerfile .
    ```
 
-2. Bootstrap once with `bash deploy/unraid/install.sh`, or a one-shot `opentprm init` container writing into appdata `data/` and `secrets/`. Tighten `master.key` and `tls.key` to mode `0400`.
+2. Bootstrap once with `bash deploy/unraid/install.sh`, or a one-shot `opentprm init` container writing into appdata `data/` and `secrets/`. Tighten `master.key` and `tls.key` to mode `0400`. Capture the bootstrap token (stdout or `data/bootstrap.token`).
 
 3. Deploy via Community Applications / Docker UI using `deploy/unraid/opentprm.xml`, or Compose Manager with `deploy/unraid/docker-compose.unraid.yml`.
 
 4. Network: Bridge. Port: `8443`. Privileged: OFF. Extra params include `--read-only`, `--cap-drop=ALL`, `--security-opt no-new-privileges`, and tmpfs `/tmp`. The process runs as UID/GID **65532** (not PUID/PGID).
 
-5. WebUI: `https://[IP]:8443`. Portal stays off by default.
+5. WebUI: `https://[IP]:8443` — confirm `/health/ready` is `ready`, then open `/bootstrap` for first-login admin enroll ([first-login.md](first-login.md)). Portal stays off by default.
 
-Full steps: [`deploy/unraid/README-UNRAID.md`](../../deploy/unraid/README-UNRAID.md).
+Full steps: [`deploy/unraid/README-UNRAID.md`](../../deploy/unraid/README-UNRAID.md). Analyst day-2 flows: [workflows.md](workflows.md).

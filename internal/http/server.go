@@ -151,6 +151,11 @@ func (a *App) handleUI(w http.ResponseWriter, r *http.Request) {
 	ac := a.authContext(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	switch {
+	case r.URL.Path == "/bootstrap" || r.URL.Path == "/bootstrap/":
+		data := map[string]any{"Title": "First login bootstrap"}
+		if err := a.Templates.ExecuteTemplate(w, "bootstrap.tmpl", data); err != nil {
+			writeProblem(w, 500, "error", "template render failed")
+		}
 	case r.URL.Path == "/" || r.URL.Path == "/home":
 		data := map[string]any{
 			"Title": "Analyst home", "User": ac.PrincipalID, "Roles": ac.Roles,

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/TheScottle/OpenTPRM/internal/audit"
 	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
 )
@@ -14,6 +15,8 @@ import (
 func (a *App) handleAuth(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	path := stringsTrimPrefixAPI(r.URL.Path)
 	switch {
+	case path == "/auth/bootstrap" && r.Method == http.MethodPost:
+		a.handleBootstrapConsume(w, r)
 	case path == "/auth/webauthn/enroll/begin" && r.Method == http.MethodPost:
 		a.handleWebAuthnEnrollBegin(w, r)
 	case path == "/auth/webauthn/enroll/finish" && r.Method == http.MethodPost:
@@ -31,6 +34,55 @@ func (a *App) handleAuth(w http.ResponseWriter, r *http.Request, ac authz.Contex
 	default:
 		writeProblem(w, http.StatusNotFound, "not_found", "unknown auth path")
 	}
+}
+
+// handleBootstrapConsume enrolls the first Security + System Administrators (OPS-003).
+// Unauthenticated; one-time token from opentprm init self-destructs on success.
+func (a *App) handleBootstrapConsume(w http.ResponseWriter, r *http.Request) {
+	if a.Store == nil {
+		writeProblem(w, http.StatusServiceUnavailable, "unavailable", "store unavailable")
+		return
+	}
+	var body struct {
+		Token               string `json:"token"`
+		SecurityAdminEmail  string `json:"security_admin_email"`
+		SystemAdminEmail    string `json:"system_admin_email"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		writeProblem(w, 400, "bad_request", "invalid json")
+		return
+	}
+	if body.Token == "" || body.SecurityAdminEmail == "" || body.SystemAdminEmail == "" {
+		writeProblem(w, 400, "bad_request", "token, security_admin_email, and system_admin_email required")
+		return
+	}
+	if body.SecurityAdminEmail == body.SystemAdminEmail {
+		writeProblem(w, 400, "bad_request", "security and system administrator emails must differ")
+		return
+	}
+	secID, sysID, err := authn.ConsumeBootstrapToken(
+		r.Context(), a.Store.DB(), body.Token, body.SecurityAdminEmail, body.SystemAdminEmail, time.Now().UTC(),
+	)
+	if err == authn.ErrBootstrapUsed {
+		writeProblem(w, 409, "bootstrap_used", "bootstrap token already used or expired")
+		return
+	}
+	if err != nil {
+		writeProblem(w, 400, "bad_request", "bootstrap failed")
+		return
+	}
+	if a.Audit != nil {
+		_ = a.Audit.Append(r.Context(), audit.Event{
+			Actor: "bootstrap", Action: "bootstrap.admins_enrolled",
+			ResourceType: "user", ResourceID: secID + "," + sysID, Decision: "allow",
+			DiffRedacted: `{"security_admin_email":"` + body.SecurityAdminEmail + `","system_admin_email":"` + body.SystemAdminEmail + `"}`,
+		})
+	}
+	writeJSON(w, 201, map[string]any{
+		"security_administrator_id": secID,
+		"system_administrator_id":   sysID,
+		"next":                      "enroll passkeys via POST /api/v1/auth/webauthn/enroll/begin then /finish for each user_id",
+	})
 }
 
 func stringsTrimPrefixAPI(path string) string {

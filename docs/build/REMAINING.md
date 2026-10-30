@@ -2,11 +2,11 @@
 
 Ordered by security-first milestone. Each slice lists concrete file targets and exit tests. Do not claim a milestone complete unless its exit gate truly passes.
 
-**Progress snapshot (this branch):** Gap close: **exception list/approve HTML UI**; **OIDC authorization-code+PKCE client vs fake IdP httptest** + Keycloak handbook notes; **pdfcpu re-evaluated (Apache-2.0, CGO-free) — keep marked ZIP** (ADR-0004); **admin keys/backups HTML stubs** + **/me agent-grants revoke UI**; **portal rate limit + honeypot**; **broader NFR concurrent /health/ready + authenticated /me smoke**. Prior: answer-library UI; committee marked ZIP; Sterling & Vance demo graph; WebAuthn COSE; OpenAPI §10.2 expansion.
+**Progress snapshot (live-prep):** **First-login docs + `/bootstrap` UI + `POST /api/v1/auth/bootstrap`** (OPS-003 HTTP consume); handbook **workflows.md**; Unraid cross-links; CGO-free test/build/smoke (`init` + sealed/unsealed `/health/*`). Prior gap close: exception UI; OIDC PKCE fake IdP; marked ZIP (ADR-0004); admin/agent-grants stubs; portal rate limit + honeypot; NFR ready smoke.
 
 ## Recovered WIP (`cursor/opentprm-recover-wip-ebfc`)
 
-Parallel-agent / finish-gaps uncommitted work was collected from `cursor/opentprm-unraid-ebfc` WIP plus `stash@{0}` (foreign-wip-parallel-agent) and `stash@{1}` (wip-other-agent-templates). Content landed on main (Unraid pack under `deploy/unraid/` kept intact). Stashes were **not** dropped.
+Parallel-agent / finish-gaps uncommitted work was collected from `cursor/opentprm-unraid-ebfc` WIP plus prior stashes and landed on main (Unraid pack under `deploy/unraid/` kept intact). Feature branches were cleaned after live-prep merge.
 
 | Item | Landed | Still open |
 | --- | --- | --- |
@@ -25,7 +25,7 @@ Parallel-agent / finish-gaps uncommitted work was collected from `cursor/opentpr
 | Slice | File targets | Exit tests |
 | --- | --- | --- |
 | Session store + CSRF | `internal/authn/session.go`, `session_store.go`, `csrf.go`, wire in `internal/http/server.go` / `routes.go` | `TestSEC_AN_004_*`, `TestSEC_WEB_CSRF_*` |
-| Bootstrap + break-glass | `internal/authn/bootstrap.go`, `breakglass.go`; `opentprm init` token → DB; enroll first admins | `TestOPS_003_*`, `TestSOD_8_BreakGlass_*` |
+| Bootstrap + break-glass | `bootstrap.go`; `opentprm init` → DB; **`POST /api/v1/auth/bootstrap` + `/bootstrap` UI**; break-glass registry | `TestOPS_003_*`, `TestOPS_003_BootstrapHTTPConsume`, `TestSOD_8_BreakGlass_*` |
 | WebAuthn challenges | `internal/authn/webauthn.go` (challenge TTL/single-use); credential table already in `001_init.sql` | `TestSEC_AN_003_StepUp_*`, `TestSEC_AN_006_*` |
 | WebAuthn enroll/login + COSE | `webauthn.go` CredentialStore + COSE meta migration `009_*`; `/api/v1/auth/webauthn/*` | `TestSEC_AN_006_WebAuthnEnrollLoginStepUp`, `TestSEC_AN_006_WebAuthnCOSEPublicKeyEnrollAssert` |
 | OIDC SSO client | `internal/authn/oidc.go`, `oidc_client.go`; Keycloak notes in `docs/handbook/operator.md` | `TestSEC_AN_001_OIDCClaimValidation`, `TestSEC_AN_001_OIDCAuthCodePKCEAgainstFakeIdP` |

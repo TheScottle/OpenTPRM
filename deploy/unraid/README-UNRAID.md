@@ -72,7 +72,7 @@ chmod 0400 /mnt/user/appdata/opentprm/secrets/master.key \
            /mnt/user/appdata/opentprm/secrets/tls.key
 ```
 
-`init` prints a one-time bootstrap token (mode `0400`, 1 hour) used to enroll the first Security Administrator and System Administrator with passkeys. Capture it from the container logs/stdout.
+`init` prints a one-time bootstrap token (mode `0400`, 1 hour) used to enroll the first Security Administrator and System Administrator with passkeys. Capture it from the container logs/stdout (or `data/bootstrap.token` on the host). After the app is running and `/health/ready` returns `ready`, open `https://[IP]:8443/bootstrap` (or `POST /api/v1/auth/bootstrap`). Full first-login walkthrough: [`docs/handbook/first-login.md`](../../docs/handbook/first-login.md).
 
 ## Option A — Community Applications / Docker UI template
 
@@ -87,7 +87,7 @@ chmod 0400 /mnt/user/appdata/opentprm/secrets/master.key \
      `--read-only --cap-drop=ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m --init --user 65532:65532 --pids-limit 256`
 4. Do **not** add Variables named `OPENTPRM_MASTER_KEY`, `OPENTPRM_TLS_KEY`, or `OPENTPRM_OIDC_SECRET`.
 5. Optional non-secret Variable: `OPENTPRM_MODE=production`.
-6. Apply / Start. WebUI: `https://[IP]:8443`.
+6. Apply / Start. WebUI: `https://[IP]:8443` → check `/health/ready`, then `/bootstrap` ([first-login.md](../../docs/handbook/first-login.md)).
 
 ## Option B — Docker Compose Manager
 
@@ -102,7 +102,9 @@ Compose uses Unraid **bridge** networking, read-only rootfs, `cap_drop: ALL`, `n
 - Example production file: `config.unraid.yaml` (portal **off** by default, listen `0.0.0.0:8443`).
 - After first start, set `server.public_base_url` to your LAN URL (e.g. `https://192.168.1.50:8443`).
 - Keep the vendor portal disabled until a reverse proxy and `trusted_proxies` are configured.
-- Full operator checklist: `docs/handbook/operator.md`.
+- Operator checklist: [`docs/handbook/operator.md`](../../docs/handbook/operator.md).
+- First login / sealed vs ready: [`docs/handbook/first-login.md`](../../docs/handbook/first-login.md).
+- Analyst workflows: [`docs/handbook/workflows.md`](../../docs/handbook/workflows.md).
 
 ## Hardening checklist
 
