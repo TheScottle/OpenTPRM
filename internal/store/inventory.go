@@ -81,6 +81,9 @@ func (s *Store) CreateVendor(ctx context.Context, v Vendor) error {
 		return err
 	}
 	defaultsVendor(&v)
+	if err := ValidateTagsJSON(v.TagsJSON); err != nil {
+		return err
+	}
 	now := nowUTC()
 	return s.WithWrite(func(tx *sql.Tx) error {
 		_, err := tx.Exec(`INSERT INTO third_parties(
@@ -156,6 +159,9 @@ func (s *Store) UpdateVendor(ctx context.Context, v Vendor, reason string) error
 		return err
 	}
 	defaultsVendor(&v)
+	if err := ValidateTagsJSON(v.TagsJSON); err != nil {
+		return err
+	}
 	before, err := s.GetVendor(ctx, v.ID)
 	if err != nil {
 		return err

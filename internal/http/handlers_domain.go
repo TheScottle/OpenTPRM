@@ -142,15 +142,174 @@ func (a *App) handleAssessments(w http.ResponseWriter, r *http.Request, ac authz
 }
 
 func (a *App) handleQuestionnaires(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire", ID: "*"}) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+
+	// POST /questionnaire-templates/{id}/versions/{vid}:publish
+	if strings.Contains(path, ":publish") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "questionnaire", ID: "*"}) {
+			return
+		}
+		// path like /questionnaire-templates/{tid}/versions/{vid}:publish
+		rest := strings.TrimPrefix(path, "/questionnaire-templates/")
+		parts := strings.Split(rest, "/")
+		if len(parts) < 3 {
+			writeProblem(w, 400, "bad_request", "version id required")
+			return
+		}
+		vid := strings.TrimSuffix(parts[2], ":publish")
+		got, err := a.Store.PublishTemplateVersion(r.Context(), vid, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "publish_failed", err.Error())
+			return
+		}
+		w.Header().Set("ETag", etagVersion(got.RowVersion))
+		writeJSON(w, 200, got)
 		return
 	}
-	items, err := a.Store.ListTemplates(r.Context())
-	if err != nil {
-		writeProblem(w, 500, "error", "list failed")
+
+	// POST /questionnaire-templates/{id}/versions
+	if strings.Contains(path, "/versions") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "questionnaire", ID: "*"}) {
+			return
+		}
+		tid := extractID(r.URL.Path, "/api/v1/questionnaire-templates/", "/versions")
+		var body store.TemplateVersionRecord
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.ID = uuid.Must(uuid.NewV7()).String()
+		body.TemplateID = tid
+		body.LastEditor = ac.PrincipalID
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		body.Status = "draft"
+		if err := a.Store.CreateTemplateVersion(r.Context(), body); err != nil {
+			writeProblem(w, 400, "bad_request", err.Error())
+			return
+		}
+		writeJSON(w, 201, body)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+
+	if strings.Contains(path, "/versions") && r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire", ID: "*"}) {
+			return
+		}
+		tid := extractID(r.URL.Path, "/api/v1/questionnaire-templates/", "/versions")
+		items, err := a.Store.ListTemplateVersions(r.Context(), tid)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListTemplates(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "questionnaire", ID: "*"}) {
+			return
+		}
+		var body store.TemplateRecord
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.ID = uuid.Must(uuid.NewV7()).String()
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		if err := a.Store.CreateTemplate(r.Context(), body); err != nil {
+			writeProblem(w, 500, "error", "create failed")
+			return
+		}
+		writeJSON(w, 201, body)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
+}
+
+func (a *App) handleCustomFields(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.HasPrefix(path, "/custom-field-defs") {
+		switch r.Method {
+		case http.MethodGet:
+			if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "custom_field", ID: "*"}) {
+				return
+			}
+			ot := r.URL.Query().Get("object_type")
+			if ot == "" {
+				ot = "third_party"
+			}
+			items, err := a.Store.ListCustomFieldDefs(r.Context(), ot)
+			if err != nil {
+				writeProblem(w, 500, "error", "list failed")
+				return
+			}
+			writeJSON(w, 200, map[string]any{"items": items})
+		case http.MethodPost:
+			if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "custom_field", ID: "*"}) {
+				return
+			}
+			var body store.CustomFieldDef
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+				writeProblem(w, 400, "bad_request", "invalid json")
+				return
+			}
+			body.ID = uuid.Must(uuid.NewV7()).String()
+			body.CreatedBy = ac.PrincipalID
+			if err := a.Store.CreateCustomFieldDef(r.Context(), body); err != nil {
+				writeProblem(w, 400, "bad_request", err.Error())
+				return
+			}
+			writeJSON(w, 201, body)
+		default:
+			writeProblem(w, 405, "method_not_allowed", "method not allowed")
+		}
+		return
+	}
+	// /custom-fields values
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "custom_field", ID: "*"}) {
+			return
+		}
+		ot := r.URL.Query().Get("object_type")
+		oid := r.URL.Query().Get("object_id")
+		items, err := a.Store.ListCustomFieldValues(r.Context(), ot, oid)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPut, http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "custom_field", ID: "*"}) {
+			return
+		}
+		var body store.CustomFieldValue
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.UpdatedBy = ac.PrincipalID
+		if err := a.Store.SetCustomFieldValue(r.Context(), body); err != nil {
+			writeProblem(w, 400, "bad_request", err.Error())
+			return
+		}
+		writeJSON(w, 200, body)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
 }
 
 func (a *App) handleQuestionnaireInstances(w http.ResponseWriter, r *http.Request, ac authz.Context) {

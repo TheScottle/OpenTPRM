@@ -15,6 +15,10 @@ type APIRouter struct {
 }
 
 func (a *App) routeAPI(w http.ResponseWriter, r *http.Request) {
+	a.withIdempotency(w, r, a.routeAPIInner)
+}
+
+func (a *App) routeAPIInner(w http.ResponseWriter, r *http.Request) {
 	ac := a.authContext(r)
 	ctx := authz.WithContext(r.Context(), ac)
 	r = r.WithContext(ctx)
@@ -25,10 +29,15 @@ func (a *App) routeAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id": ac.PrincipalID, "roles": ac.Roles, "type": ac.PrincipalType,
 		})
+	case strings.HasPrefix(path, "/auth/"):
+		a.handleAuth(w, r, ac)
 	case path == "/vendors" || path == "/vendors:import" || strings.HasPrefix(path, "/vendors/"):
 		a.handleVendors(w, r, ac)
 	case path == "/fourth-party-links" || strings.HasPrefix(path, "/fourth-party-links"):
 		a.handleFourthPartyLinks(w, r, ac)
+	case path == "/custom-field-defs" || strings.HasPrefix(path, "/custom-field-defs") ||
+		path == "/custom-fields" || strings.HasPrefix(path, "/custom-fields"):
+		a.handleCustomFields(w, r, ac)
 	case path == "/intakes" || strings.HasPrefix(path, "/intakes/"):
 		a.handleIntakes(w, r, ac)
 	case path == "/assessments" || strings.HasPrefix(path, "/assessments/"):

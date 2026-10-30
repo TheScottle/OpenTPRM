@@ -2,26 +2,28 @@
 
 Ordered by security-first milestone. Each slice lists concrete file targets and exit tests. Do not claim a milestone complete unless its exit gate truly passes.
 
-**Progress snapshot (this branch):** M0 auth packages landed (session store, CSRF/Origin gate, bootstrap consume, WebAuthn challenge TTL, OIDC claim validation, break-glass registry) with unit tests; production still needs real WebAuthn enroll/login E2E, live OIDC, and full SEC-SC-006 CI. M1 inventory store/API largely filled (INV-001–005,007–008 + nested routes + CSV import); intake UI queues and full HTTP AT-01 E2E remain. OpenAPI catalog expanded toward §10.2 (embedded JSON); oapi-codegen / ETags / Idempotency still open.
+**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2 questionnaire template/version/publish store + Core/Lite/Intake seeds with STD-006 provenance landed; OSCAL/XLSX import and offline zip packaging remain. M5: Idempotency-Key middleware + vendor ETags present; oapi-codegen and replacing remaining empty catalog handlers still open.
 
 ## M0 — Secure skeleton (auth essentials still open)
 
-**Done (foundation):** sealed start + keyring, TLS listeners, Cedar PDP, hash-chained audit, Dockerfile/compose scaffold, AT-10/AT-11/SEC-CTN-006/SEC-AZ-004 harnesses; session/CSRF/OIDC-claim/bootstrap/break-glass unit layers.
+**Done (foundation):** sealed start + keyring, TLS listeners, Cedar PDP, hash-chained audit, Dockerfile/compose scaffold, AT-10/AT-11/SEC-CTN-006/SEC-AZ-004 harnesses; session/CSRF/OIDC-claim/bootstrap/break-glass unit layers; limited WebAuthn enroll/login/step-up; production config refusals (TLS, master key, allow_dev_headers).
 
 | Slice | File targets | Exit tests |
 | --- | --- | --- |
 | Session store + CSRF | `internal/authn/session.go`, `session_store.go`, `csrf.go`, wire in `internal/http/server.go` / `routes.go` | `TestSEC_AN_004_*`, `TestSEC_WEB_CSRF_*` |
 | Bootstrap + break-glass | `internal/authn/bootstrap.go`, `breakglass.go`; `opentprm init` token → DB; enroll first admins | `TestOPS_003_*`, `TestSOD_8_BreakGlass_*` |
 | WebAuthn challenges | `internal/authn/webauthn.go` (challenge TTL/single-use); credential table already in `001_init.sql` | `TestSEC_AN_003_StepUp_*`, `TestSEC_AN_006_*` |
+| WebAuthn enroll/login (limited) | `webauthn.go` CredentialStore + `/api/v1/auth/webauthn/*` | `TestSEC_AN_006_WebAuthnEnrollLoginStepUp` |
 | OIDC SSO client | `internal/authn/oidc.go`; config under `deploy/config.example.yaml` | `TestSEC_AN_001_*` (nonce/iss/aud validation unit) |
-| Authz context from session | Replace sole reliance on `X-OpenTPRM-*` in `routes.go` with cookie session → `authz.Context` (dev headers only behind non-prod flag) | `TestSEC_AZ_001_MiddlewareOrder_*` |
+| Authz context from session | Replace sole reliance on `X-OpenTPRM-*` in `routes.go` with cookie session → `authz.Context` (dev headers only behind non-prod flag) | `TestSEC_AZ_001_MiddlewareOrder_*`, `TestSEC_AZ_001_ProductionDevHeadersRefused` |
+| Production insecure refuse | `internal/config/config.go` Validate | `TestOPS_001_ProductionRefusesInsecure` |
 | SEC-SC-006 CI | `.github/workflows/ci.yml` SBOM/govulncheck/license allow-list | CI job green on PR |
 
-**Not claimed complete until:** passkey enroll/login E2E, OIDC against Keycloak fixture, CSRF on every mutating cookie route, full SC-006 gate.
+**Not claimed complete until:** full WebAuthn attestation/CTAP enroll UI, OIDC against Keycloak fixture, CSRF on every mutating cookie route, full SC-006 gate.
 
 ## M1 — Inventory and intake
 
-**Done (partial):** vendor create/list, intake create/submit + tiering, assessment create/transition, shred tombstone.
+**Done (partial):** vendor create/list, intake create/submit + tiering, assessment create/transition, shred tombstone; INV-001–009 store coverage; nested contacts/engagements/history/fourth-party/CSV import; custom fields; AT-01 HTTP E2E; expanded authz matrix rows for M1 routes.
 
 | Slice | File targets | Exit tests |
 | --- | --- | --- |
@@ -29,18 +31,22 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 | Contacts + fourth parties | store methods + `/vendors/{id}/contacts`, `/fourth-party-links` | `TestINV_004_*`, `TestINV_005_*` |
 | Duplicate detect + merge + history | `MergeVendors`, `object_history`, `:merge` route | `TestINV_002_*`, `TestINV_007_*` |
 | Engagements full model | `CreateEngagement`/`Update`/`List` matching `002_inventory.sql` | `TestINV_003_*`, `TestINV_009_*` |
+| Tags + custom fields (INV-006) | `custom_fields.go`, migration `006_custom_fields.sql` | `TestINV_006_TagsAndCustomFields` |
+| Next action due (INV-009) | `next_action.go` RecalculateNextActionDue | `TestINV_009_NextActionDueEarliest` |
 | Bulk CSV import quarantine | `internal/store/import_csv.go` (no formula eval) | `TestINV_008_*` |
 | Route authz matrix M1 | expand `matrix_test.go` for all M1 routes × roles | SEC-AZ-004 covers M1 |
-| Intake E2E + UI queues | handlers + minimal templates | AT-01; ASM-001 already present |
+| Intake E2E + UI queues | handlers + minimal templates | `TestAT_01_IntakeSubmitHTTPE2E`; ASM-001 already present |
 
-**Not claimed complete until:** matrix covers every M1 route, intake UI queue, AT-01 E2E against HTTP.
+**Not claimed complete until:** intake UI queue screens, every M1 route exercised in an HTTP authz matrix (store/Cedar matrix expanded; UI still missing).
 
 ## M2 — Questionnaires
 
+**Done (partial):** template/version/publish store API; Core/Lite/Intake seeds with STD-006 provenance validation; QST SOD publish tests.
+
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Template authoring API/UI | store + handlers + `web/templates` | AT-07 |
-| Modules/assembly, Lite/Intake/overlays seeds | `testdata/seed/`, publish path | QST publish tests |
+| Template authoring API/UI | store + handlers + `web/templates` | AT-07 (API publish done; UI open) |
+| Modules/assembly, Lite/Intake/overlays seeds | `testdata/seed/`, publish path | `TestQST_PublishAndSTD006Seeds` |
 | OSCAL + generic CSV/XLSX import | `internal/domain/questionnaire/import_*.go` | AT-15 |
 | Offline packages | expand `offline.go` + real zip packaging | offline round-trip |
 | QST-011 limits | size/count caps | `TestQST_011_*` |
@@ -66,11 +72,13 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M5 — OpenAPI contract
 
+**Done (partial):** expanded OpenAPI catalog; vendor ETags; Idempotency-Key middleware with replay header.
+
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Complete OpenAPI §10.2 | `api/openapi.yaml` | schema lint |
 | oapi-codegen stubs | generated server types | compile |
-| ETags / Idempotency / cursors | middleware + store row_version | contract tests |
+| ETags / Idempotency / cursors | middleware + store row_version | contract tests (idempotency covered in AT-01 HTTP) |
 | Replace empty/501 handlers | `handlers_domain.go` | no 501 on catalog paths |
 
 ## M6 — OAuth AS + MCP

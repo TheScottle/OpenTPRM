@@ -134,8 +134,15 @@ func cmdServe(log *slog.Logger, args []string) error {
 	}
 
 	var sessions *authn.SessionStore
+	var credentials *authn.CredentialStore
 	if stStore != nil {
 		sessions = authn.NewSessionStore(stStore.DB())
+		credentials = authn.NewCredentialStore(stStore.DB())
+	}
+	// Production Validate refuses identity.allow_dev_headers; never honor X-OpenTPRM-* there.
+	allowDev := cfg.Mode != config.ModeProduction
+	if cfg.Mode != config.ModeProduction && cfg.Identity.OIDC.Issuer != "" && !cfg.Identity.AllowDevHeaders {
+		allowDev = false
 	}
 	app := &httpserver.App{
 		Cfg:             cfg,
@@ -147,8 +154,10 @@ func cmdServe(log *slog.Logger, args []string) error {
 		SealedMode:      sealed,
 		Sessions:        sessions,
 		Challenges:      authn.NewChallengeStore(),
+		Credentials:     credentials,
 		BreakGlass:      authn.NewBreakGlassRegistry(),
-		AllowDevHeaders: cfg.Mode != config.ModeProduction,
+		Idempotency:     httpserver.NewIdempotencyStore(24 * time.Hour),
+		AllowDevHeaders: allowDev,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

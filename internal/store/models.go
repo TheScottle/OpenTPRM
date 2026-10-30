@@ -54,6 +54,7 @@ type Engagement struct {
 	SubcontractorUse      bool   `json:"subcontractor_use,omitempty"`
 	InherentTier          int    `json:"inherent_tier,omitempty"`
 	NextActionDue         string `json:"next_action_due,omitempty"`
+	ReassessmentDue       string `json:"reassessment_due,omitempty"`
 	CreatedBy             string `json:"created_by"`
 	UpdatedBy             string `json:"updated_by"`
 	CreatedAt             string `json:"created_at,omitempty"`

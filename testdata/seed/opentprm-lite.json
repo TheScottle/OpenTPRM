@@ -1,0 +1,36 @@
+{
+  "name": "OpenTPRM Lite",
+  "kind": "lite",
+  "semver": "1.0.0",
+  "provenance": {
+    "source": "Owner-authored for OpenTPRM",
+    "version": "1.0.0",
+    "license": "owner_authored",
+    "mapped_frameworks": "NIST CSF 2.0 (NIST-authored references only)",
+    "url": "https://github.com/TheScottle/OpenTPRM"
+  },
+  "sections": [
+    {
+      "id": "baseline",
+      "title": "Baseline controls",
+      "questions": [
+        {
+          "key": "LITE-IAM-01",
+          "text": "Are workforce accounts unique and individually attributable?",
+          "type": "yes_no_na",
+          "domain": "PR.AA",
+          "mappings": [{"framework": "NIST-CSF-2.0", "control_id": "PR.AA-01"}],
+          "license": "owner_authored"
+        },
+        {
+          "key": "LITE-IR-01",
+          "text": "Does the third party maintain a documented incident response process?",
+          "type": "yes_no_na",
+          "domain": "RS",
+          "mappings": [{"framework": "NIST-CSF-2.0", "control_id": "RS.MA-01"}],
+          "license": "owner_authored"
+        }
+      ]
+    }
+  ]
+}

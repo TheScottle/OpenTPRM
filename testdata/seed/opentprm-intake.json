@@ -1,0 +1,42 @@
+{
+  "name": "OpenTPRM Intake",
+  "kind": "intake",
+  "semver": "1.0.0",
+  "provenance": {
+    "source": "Owner-authored for OpenTPRM",
+    "version": "1.0.0",
+    "license": "owner_authored",
+    "mapped_frameworks": "OpenTPRM App. A tiering factors",
+    "url": "https://github.com/TheScottle/OpenTPRM"
+  },
+  "sections": [
+    {
+      "id": "intake",
+      "title": "Engagement intake",
+      "questions": [
+        {
+          "key": "INT-DATA-01",
+          "text": "What is the highest data classification the third party will process?",
+          "type": "enum",
+          "options": ["Public", "Internal", "Confidential", "Client-Confidential", "Privileged"],
+          "domain": "intake",
+          "license": "owner_authored"
+        },
+        {
+          "key": "INT-ACCESS-01",
+          "text": "Will the third party receive privileged access to firm systems?",
+          "type": "yes_no_na",
+          "domain": "intake",
+          "license": "owner_authored"
+        },
+        {
+          "key": "INT-CLIENT-01",
+          "text": "Will the engagement involve client-confidential information?",
+          "type": "yes_no_na",
+          "domain": "intake",
+          "license": "owner_authored"
+        }
+      ]
+    }
+  ]
+}

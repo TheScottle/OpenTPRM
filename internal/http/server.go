@@ -29,9 +29,11 @@ type App struct {
 	PDP     *authz.PDP
 	GW      *gateway.Gateway
 	Log     *slog.Logger
-	Sessions *authn.SessionStore
-	Challenges *authn.ChallengeStore
-	BreakGlass *authn.BreakGlassRegistry
+	Sessions     *authn.SessionStore
+	Challenges   *authn.ChallengeStore
+	Credentials  *authn.CredentialStore
+	BreakGlass   *authn.BreakGlassRegistry
+	Idempotency  *IdempotencyStore
 	// AllowDevHeaders permits X-OpenTPRM-* bootstrap auth outside production.
 	AllowDevHeaders bool
 

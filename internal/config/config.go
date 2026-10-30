@@ -67,8 +67,9 @@ type KeysConfig struct {
 }
 
 type IdentityConfig struct {
-	OIDC    OIDCConfig    `yaml:"oidc" json:"oidc"`
-	Session SessionConfig `yaml:"session" json:"session"`
+	OIDC            OIDCConfig    `yaml:"oidc" json:"oidc"`
+	Session         SessionConfig `yaml:"session" json:"session"`
+	AllowDevHeaders bool          `yaml:"allow_dev_headers" json:"allow_dev_headers"`
 }
 
 type OIDCConfig struct {
@@ -192,6 +193,9 @@ func (c Config) Validate() error {
 		}
 		if c.Server.Portal.Enabled && len(c.Server.Portal.TrustedProxies) == 0 {
 			return errors.New("portal enabled in production requires trusted_proxies")
+		}
+		if c.Identity.AllowDevHeaders {
+			return errors.New("production mode refuses identity.allow_dev_headers")
 		}
 	}
 	return nil
