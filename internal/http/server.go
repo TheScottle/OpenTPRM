@@ -14,6 +14,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/audit"
 	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
+	"github.com/TheScottle/OpenTPRM/internal/blob"
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
 	"github.com/TheScottle/OpenTPRM/internal/gateway"
@@ -25,6 +26,7 @@ type App struct {
 	Cfg     config.Config
 	Keyring *crypto.Keyring
 	Store   *store.Store
+	Blobs   *blob.Store
 	Audit   *audit.Logger
 	PDP     *authz.PDP
 	GW      *gateway.Gateway

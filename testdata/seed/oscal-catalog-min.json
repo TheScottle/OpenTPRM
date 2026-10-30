@@ -1,0 +1,34 @@
+{
+  "catalog": {
+    "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "metadata": {
+      "title": "OpenTPRM Minimal OSCAL Catalog (test seed)"
+    },
+    "groups": [
+      {
+        "id": "ac",
+        "title": "Access Control",
+        "controls": [
+          {
+            "id": "ac-2",
+            "title": "Account Management"
+          },
+          {
+            "id": "ac-3",
+            "title": "Access Enforcement"
+          }
+        ]
+      },
+      {
+        "id": "ia",
+        "title": "Identification and Authentication",
+        "controls": [
+          {
+            "id": "ia-2",
+            "title": "Identification and Authentication (Organizational Users)"
+          }
+        ]
+      }
+    ]
+  }
+}

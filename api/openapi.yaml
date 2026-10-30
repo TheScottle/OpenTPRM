@@ -186,10 +186,31 @@ paths:
   /uploads:
     post:
       tags: [evidence]
-      summary: Upload evidence bytes (quarantine pipeline)
-      operationId: upload
+      summary: Create chunked upload session (JSON) or single-shot raw body
+      operationId: createUpload
       responses:
-        "202": { description: Accepted }
+        "201": { description: Session created }
+        "202": { description: Accepted into quarantine }
+        "422": { description: Rejected }
+  /uploads/{id}:
+    put:
+      tags: [evidence]
+      summary: Append upload chunk
+      operationId: appendUploadChunk
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: Chunk accepted }
+        "422": { description: Rejected }
+  "/uploads/{id}:complete":
+    post:
+      tags: [evidence]
+      summary: Complete upload — validate, encrypt blob, quarantine evidence
+      operationId: completeUpload
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "202": { description: Quarantined }
         "422": { description: Rejected }
   /evidence:
     get:

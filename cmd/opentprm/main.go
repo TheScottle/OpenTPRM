@@ -23,6 +23,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/audit"
 	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
+	"github.com/TheScottle/OpenTPRM/internal/blob"
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
 	"github.com/TheScottle/OpenTPRM/internal/ctn"
@@ -135,9 +136,13 @@ func cmdServe(log *slog.Logger, args []string) error {
 
 	var sessions *authn.SessionStore
 	var credentials *authn.CredentialStore
+	var blobs *blob.Store
 	if stStore != nil {
 		sessions = authn.NewSessionStore(stStore.DB())
 		credentials = authn.NewCredentialStore(stStore.DB())
+	}
+	if !sealed && keyring != nil {
+		blobs = &blob.Store{Root: cfg.Storage.DataDir, KEK: keyring.BlobKEK}
 	}
 	// Production Validate refuses identity.allow_dev_headers; never honor X-OpenTPRM-* there.
 	allowDev := cfg.Mode != config.ModeProduction
@@ -148,6 +153,7 @@ func cmdServe(log *slog.Logger, args []string) error {
 		Cfg:             cfg,
 		Keyring:         keyring,
 		Store:           stStore,
+		Blobs:           blobs,
 		Audit:           auditLog,
 		PDP:             pdp,
 		Log:             log,

@@ -2,7 +2,7 @@
 
 Ordered by security-first milestone. Each slice lists concrete file targets and exit tests. Do not claim a milestone complete unless its exit gate truly passes.
 
-**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2 questionnaire template/version/publish store + Core/Lite/Intake seeds with STD-006 provenance landed; OSCAL/XLSX import and offline zip packaging remain. M5: Idempotency-Key middleware + vendor ETags present; oapi-codegen and replacing remaining empty catalog handlers still open.
+**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**. M3 start: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**, blob Get round-trip, sandbox path allow-list / empty-env checks. M5: Idempotency-Key middleware + vendor ETags present; oapi-codegen and replacing remaining empty catalog handlers still open.
 
 ## M0 — Secure skeleton (auth essentials still open)
 
@@ -41,23 +41,27 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M2 — Questionnaires
 
-**Done (partial):** template/version/publish store API; Core/Lite/Intake seeds with STD-006 provenance validation; QST SOD publish tests.
+**Done (partial):** template/version/publish store API; Core/Lite/Intake seeds with STD-006 provenance; QST SOD publish tests; **signed offline zip Pack/Unpack + AT-07**; **OSCAL catalog import + CSV/XLSX mapping imports**; **QST-011 limits**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Template authoring API/UI | store + handlers + `web/templates` | AT-07 (API publish done; UI open) |
+| Template authoring API/UI | store + handlers + `web/templates` | AT-07 (API publish + offline zip done; UI open) |
 | Modules/assembly, Lite/Intake/overlays seeds | `testdata/seed/`, publish path | `TestQST_PublishAndSTD006Seeds` |
-| OSCAL + generic CSV/XLSX import | `internal/domain/questionnaire/import_*.go` | AT-15 |
-| Offline packages | expand `offline.go` + real zip packaging | offline round-trip |
-| QST-011 limits | size/count caps | `TestQST_011_*` |
+| OSCAL + generic CSV/XLSX import | `import_oscal.go`, `import_tabular.go` | `TestImportOSCALCatalog`, `TestImportCSV*`, `TestImportXLSXHappyPath` |
+| Offline packages | `offline.go` PackZip/UnpackZip | `TestOfflineZipRoundTripAndLockedCell`, `TestAT_07_*` |
+| QST-011 limits | `limits.go` + import path | `TestQST_011_*` |
+| Instances/responses/review/scoring API | store + handlers | instance E2E |
+| Answer library + delta HTTP | wire `delta.go` to instances | AT-15 (domain done; HTTP open) |
 
 ## M3 — Evidence sandbox
 
+**Done (partial):** magic/quarantine/AT-08 validation; detectors; **chunked upload sessions + complete → blob + quarantine**; blob Get round-trip; sandbox path allow-list + empty-env network forbid.
+
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Chunked uploads | `/uploads` sessions + `:complete` | EVD upload tests |
-| Landlock/seccomp + Wasm PDFium | `internal/sandbox/`, `opentprm sandbox` | AT-08/AT-09 + no-network |
-| Blob round-trip + safe viewer | `internal/blob/`, evidence pages | EVD viewer tests |
+| Chunked uploads | `store/uploads.go`, `/uploads` + `:complete` | `TestEVD_ChunkedUploadCompleteQuarantine` |
+| Landlock/seccomp + Wasm PDFium | `internal/sandbox/`, `opentprm sandbox` | path allow-list tests done; real Landlock/Wasm open |
+| Blob round-trip + safe viewer | `internal/blob/` Get/Put | `TestBlobRoundTrip`; viewer pages open |
 | SOC schemas + fuzz corpora | `api/schemas/`, `testdata/fuzz/` | schema validate + fuzz |
 
 ## M4 — Risk / contracts / ops
@@ -72,7 +76,7 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M5 — OpenAPI contract
 
-**Done (partial):** expanded OpenAPI catalog; vendor ETags; Idempotency-Key middleware with replay header.
+**Done (partial):** expanded OpenAPI catalog (incl. upload chunk/complete); vendor ETags; Idempotency-Key middleware with replay header.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |

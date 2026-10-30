@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -320,24 +321,109 @@ func (a *App) handleQuestionnaireInstances(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *App) handleUploads(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+
+	// POST /uploads/{id}:complete
+	if strings.Contains(path, ":complete") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionEngagementWrite, authz.Resource{Type: "evidence", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/uploads/", ":complete")
+		ev, err := a.Store.CompleteUpload(r.Context(), id, a.Blobs, ac.PrincipalID)
+		if err != nil {
+			writeJSON(w, 422, map[string]any{"status": "rejected", "reason": err.Error()})
+			return
+		}
+		writeJSON(w, 202, ev)
+		return
+	}
+
+	// PUT /uploads/{id} — append chunk
+	if strings.HasPrefix(path, "/uploads/") && r.Method == http.MethodPut {
+		if !a.authorize(w, ac, authz.ActionEngagementWrite, authz.Resource{Type: "evidence", ID: "*"}) {
+			return
+		}
+		id := strings.TrimPrefix(path, "/uploads/")
+		id = strings.Trim(id, "/")
+		r.Body = http.MaxBytesReader(w, r.Body, evidence.MaxUploadBytes)
+		u, err := a.Store.AppendUploadChunk(r.Context(), id, r.Body, evidence.MaxUploadBytes)
+		if err != nil {
+			writeProblem(w, 422, "upload_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"id": u.ID, "size_bytes": u.SizeBytes, "status": u.Status})
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		writeProblem(w, 405, "method_not_allowed", "method not allowed")
 		return
 	}
-	// Size guard for AT-08 style rejection at API edge
+	if !a.authorize(w, ac, authz.ActionEngagementWrite, authz.Resource{Type: "evidence", ID: "*"}) {
+		return
+	}
+
+	ct := r.Header.Get("Content-Type")
+	// JSON session create for chunked uploads.
+	if strings.HasPrefix(ct, "application/json") {
+		var body struct {
+			EngagementID string `json:"engagement_id"`
+			DeclaredName string `json:"declared_name"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		u, err := a.Store.CreateUploadSession(r.Context(), store.UploadSession{
+			EngagementID: body.EngagementID,
+			DeclaredName: body.DeclaredName,
+			Uploader:     ac.PrincipalID,
+		})
+		if err != nil {
+			writeProblem(w, 500, "error", err.Error())
+			return
+		}
+		writeJSON(w, 201, u)
+		return
+	}
+
+	// Single-shot raw body: create session, write chunk, complete (AT-08 edge).
 	r.Body = http.MaxBytesReader(w, r.Body, evidence.MaxUploadBytes)
 	buf, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeProblem(w, 413, "too_large", "upload exceeds limits")
 		return
 	}
-	magic, err := evidence.ValidateUpload(buf)
-	if err != nil {
+	if _, err := evidence.ValidateUpload(buf); err != nil {
 		writeJSON(w, 422, map[string]any{"status": "rejected_malformed", "reason": err.Error()})
 		return
 	}
-	id := uuid.Must(uuid.NewV7()).String()
-	writeJSON(w, 202, map[string]any{"id": id, "status": "quarantined", "magic": magic})
+	engID := r.URL.Query().Get("engagement_id")
+	u, err := a.Store.CreateUploadSession(r.Context(), store.UploadSession{
+		EngagementID: engID,
+		DeclaredName: r.URL.Query().Get("name"),
+		Uploader:     ac.PrincipalID,
+	})
+	if err != nil {
+		writeProblem(w, 500, "error", err.Error())
+		return
+	}
+	if _, err := a.Store.AppendUploadChunk(r.Context(), u.ID, bytes.NewReader(buf), evidence.MaxUploadBytes); err != nil {
+		writeProblem(w, 422, "upload_failed", err.Error())
+		return
+	}
+	if engID == "" {
+		// Without engagement, validate-only path (legacy 202 shape).
+		magic, _ := evidence.DetectType(buf)
+		writeJSON(w, 202, map[string]any{"id": u.ID, "status": "quarantined", "magic": magic})
+		return
+	}
+	ev, err := a.Store.CompleteUpload(r.Context(), u.ID, a.Blobs, ac.PrincipalID)
+	if err != nil {
+		writeJSON(w, 422, map[string]any{"status": "rejected", "reason": err.Error()})
+		return
+	}
+	writeJSON(w, 202, ev)
 }
 
 func (a *App) handleEvidence(w http.ResponseWriter, r *http.Request, ac authz.Context) {
