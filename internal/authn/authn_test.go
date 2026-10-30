@@ -309,10 +309,15 @@ func TestSEC_WEB_CSRF_OriginReject(t *testing.T) {
 		{req{"POST", "same-origin", "https://127.0.0.1:8443"}, "127.0.0.1:8443", false},
 		{req{"POST", "same-origin", "https://127.0.0.1:8443"}, "127.0.0.1", false},
 		{req{"POST", "same-origin", "https://evil.example:8443"}, "127.0.0.1:8443", true},
-		// Reverse proxy: browser Origin on :443, backend Host :8443 — same hostname + same-origin.
+		// Reverse proxy: browser Origin on :443, backend Host :8443 — same hostname.
 		{req{"POST", "same-origin", "https://127.0.0.1"}, "127.0.0.1:8443", false},
-		{req{"POST", "same-origin", "https://127.0.0.1:9999"}, "127.0.0.1:8443", false}, // same-origin hint + hostname
-		{req{"POST", "", "https://127.0.0.1:9999"}, "127.0.0.1:8443", false},             // empty SFS treated as same-site hint
+		{req{"POST", "same-origin", "https://127.0.0.1:9999"}, "127.0.0.1:8443", false},
+		{req{"POST", "", "https://127.0.0.1:9999"}, "127.0.0.1:8443", false},
+		// Matching Origin wins over a spurious Sec-Fetch-Site: cross-site.
+		{req{"POST", "cross-site", "https://127.0.0.1:8443"}, "127.0.0.1:8443", false},
+		// Docker Desktop loopback aliases.
+		{req{"POST", "same-origin", "https://127.0.0.1:8443"}, "localhost:8443", false},
+		{req{"POST", "same-origin", "https://localhost:8443"}, "127.0.0.1:8443", false},
 	}
 	for i, c := range cases {
 		r := &httpRequest{method: c.r.Method, sfs: c.r.SFS, origin: c.r.Origin}

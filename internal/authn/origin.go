@@ -11,23 +11,19 @@ import (
 // allowedHosts are request Host and optional public_base_url / forwarded hosts (host or host:port).
 //
 // Rules (SEC-WEB):
-//   - Sec-Fetch-Site: cross-site → reject
-//   - Missing Origin → allow (classic same-origin navigations may omit it)
-//   - Origin hostname must match at least one allowed host
-//   - Port must match when both sides declare a non-default port; if Sec-Fetch-Site is
-//     same-origin / same-site / none, hostname match alone is enough (reverse proxies often
-//     rewrite Host to :8443 while the browser Origin uses :443 or omits the port)
+//   - Missing Origin → allow unless Sec-Fetch-Site is cross-site (classic form navigations omit Origin)
+//   - Origin hostname must match an allowed host (loopback aliases treated as equivalent)
+//   - When Origin matches the allowlist, allow even if Sec-Fetch-Site says cross-site
+//     (browsers can mis-label local HTTPS / Docker loopback; matching Origin is authoritative)
+//   - Port: tolerant when hostnames match (proxy / published-port rewrites)
 func CheckOriginRejectsCrossSite(r *http.Request, allowedHosts ...string) bool {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 		return false
 	}
 	sfs := r.Header.Get("Sec-Fetch-Site")
-	if sfs == "cross-site" {
-		return true
-	}
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		return false
+		return sfs == "cross-site"
 	}
 	u, err := url.Parse(origin)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
@@ -47,14 +43,14 @@ func CheckOriginRejectsCrossSite(r *http.Request, allowedHosts ...string) bool {
 	if len(hosts) == 0 {
 		hosts = []string{r.Host}
 	}
-	sameSiteHint := sfs == "same-origin" || sfs == "same-site" || sfs == "none" || sfs == ""
+	// Expand loopback aliases so Docker Desktop (localhost ↔ 127.0.0.1 ↔ ::1) works.
+	hosts = expandLoopbackAllowlist(hosts, originHost)
 
 	for _, h := range hosts {
 		h = strings.TrimSpace(h)
 		if h == "" {
 			continue
 		}
-		// Allow full URLs in public_base_url.
 		if strings.Contains(h, "://") {
 			if pu, err := url.Parse(h); err == nil && pu.Host != "" {
 				h = pu.Host
@@ -64,18 +60,67 @@ func CheckOriginRejectsCrossSite(r *http.Request, allowedHosts ...string) bool {
 		if wantHost == "" || wantHost == "0.0.0.0" || wantHost == "::" {
 			continue
 		}
-		if originHost != strings.ToLower(wantHost) {
+		if !hostsEquivalent(originHost, wantHost) {
 			continue
 		}
 		if portsCompatible(originPort, wantPort) {
 			return false
 		}
-		// Browser attested same-site: Host port rewrite behind TLS terminator / Docker publish.
-		if sameSiteHint {
-			return false
-		}
+		// Hostname matched (incl. loopback aliases): allow despite port rewrite.
+		return false
 	}
 	return true
+}
+
+func expandLoopbackAllowlist(hosts []string, originHost string) []string {
+	need := isLoopbackHost(originHost)
+	if !need {
+		for _, h := range hosts {
+			hh, _ := authorityHostname(h)
+			if isLoopbackHost(hh) {
+				need = true
+				break
+			}
+		}
+	}
+	if !need {
+		return hosts
+	}
+	out := append([]string{}, hosts...)
+	out = append(out, "127.0.0.1", "localhost", "::1", "[::1]")
+	return out
+}
+
+func authorityHostname(h string) (string, string) {
+	h = strings.TrimSpace(h)
+	if strings.Contains(h, "://") {
+		if pu, err := url.Parse(h); err == nil && pu.Host != "" {
+			h = pu.Host
+		}
+	}
+	return splitHostPort(h)
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	host = strings.Trim(host, "[]")
+	switch host {
+	case "localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1":
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+func hostsEquivalent(a, b string) bool {
+	a = strings.ToLower(strings.Trim(strings.TrimSpace(a), "[]"))
+	b = strings.ToLower(strings.Trim(strings.TrimSpace(b), "[]"))
+	if a == b {
+		return true
+	}
+	return isLoopbackHost(a) && isLoopbackHost(b)
 }
 
 func portsCompatible(originPort, wantPort string) bool {
@@ -85,7 +130,6 @@ func portsCompatible(originPort, wantPort string) bool {
 	if originPort == wantPort {
 		return true
 	}
-	// Origin default https while Host carries backend listen port (e.g. :8443).
 	if originPort == "443" || originPort == "80" {
 		return true
 	}

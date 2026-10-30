@@ -9,7 +9,7 @@ Owner path from a fresh `opentprm init` to an authenticated Listener A on port *
 | Unraid (Bridge) | `https://<UNRAID-LAN-IP>:8443` |
 | Local smoke | `https://127.0.0.1:8443` |
 
-Set `server.public_base_url` in config to **exactly** that browser URL (e.g. `https://192.168.1.50:8443`). Login POSTs are Origin-checked against Host and this value; a wrong or `0.0.0.0` base URL can yield **403 cross-site request rejected**.
+Set `server.public_base_url` in config to the URL you open in the browser (e.g. `https://127.0.0.1:8443` or `https://192.168.1.50:8443`). Loopback aliases (`localhost` / `127.0.0.1` / `::1`) are treated as equivalent. Rebuild/redeploy after pulling — an old image will keep returning **403 cross-site request rejected**.
 
 TLS uses the self-signed cert from `init` unless you replaced it.
 
