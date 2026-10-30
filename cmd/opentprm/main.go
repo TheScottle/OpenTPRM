@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
 	"github.com/TheScottle/OpenTPRM/internal/ctn"
 	httpserver "github.com/TheScottle/OpenTPRM/internal/http"
+	"github.com/TheScottle/OpenTPRM/internal/sandbox"
 	"github.com/TheScottle/OpenTPRM/internal/store"
 	"github.com/TheScottle/OpenTPRM/policies"
 )
@@ -317,10 +317,41 @@ func cmdHealthcheck() error {
 }
 
 func cmdSandbox(args []string) error {
-	// Parser child entrypoint (M3). Refuses network implicitly via seccomp in deploy profile.
-	if len(args) == 0 {
+	// Parser child entrypoint (M3): Landlock/no_new_privs hooks + empty-env parent.
+	// Full seccomp BPF remains in deploy/seccomp-opentprm.json around the container.
+	fs := flag.NewFlagSet("sandbox", flag.ContinueOnError)
+	jobID := fs.String("job", "", "job id")
+	input := fs.String("input", "", "absolute input path")
+	var allows []string
+	fs.Func("allow", "allow-listed path (repeatable)", func(v string) error {
+		allows = append(allows, v)
+		return nil
+	})
+	_ = fs.Parse(args)
+	// Back-compat: `opentprm sandbox <job> <input>`
+	if *jobID == "" && fs.NArg() >= 1 {
+		*jobID = fs.Arg(0)
+	}
+	if *input == "" && fs.NArg() >= 2 {
+		*input = fs.Arg(1)
+	}
+	if *jobID == "" {
 		return fmt.Errorf("sandbox: missing job id")
 	}
-	fmt.Println("sandbox stub", strings.Join(args, " "))
+	if *input == "" {
+		*input = "/dev/null"
+	}
+	if len(allows) == 0 {
+		allows = []string{*input}
+	}
+	c := sandbox.Constraints{AllowPaths: allows, ForbidNetwork: true}
+	if err := sandbox.ValidateJob(sandbox.Job{ID: *jobID, InputPath: *input}, c); err != nil {
+		return err
+	}
+	st, err := sandbox.ApplyChildHooks(c)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("sandbox ok job=%s landlock=%v degraded=%v seccomp=%d\n", *jobID, st.LandlockApplied, st.Degraded, st.SeccompMode)
 	return nil
 }

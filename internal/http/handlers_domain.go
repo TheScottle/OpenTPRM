@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -314,10 +315,189 @@ func (a *App) handleCustomFields(w http.ResponseWriter, r *http.Request, ac auth
 }
 
 func (a *App) handleQuestionnaireInstances(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+
+	// POST /questionnaire-instances/{id}/responses
+	if strings.Contains(path, "/responses") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/questionnaire-instances/", "/responses")
+		var body struct {
+			AnswersJSON string         `json:"answers_json"`
+			Answers     map[string]any `json:"answers"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		raw := body.AnswersJSON
+		if raw == "" && body.Answers != nil {
+			b, _ := json.Marshal(body.Answers)
+			raw = string(b)
+		}
+		if raw == "" {
+			raw = "{}"
+		}
+		rr, err := a.Store.AppendResponseRevision(r.Context(), id, ac.PrincipalID, raw)
+		if err != nil {
+			writeProblem(w, 422, "response_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, rr)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": []any{}})
+
+	// GET /questionnaire-instances/{id}/responses
+	if strings.Contains(path, "/responses") && r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/questionnaire-instances/", "/responses")
+		items, err := a.Store.ListResponseRevisions(r.Context(), id)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+		return
+	}
+
+	// POST /questionnaire-instances/{id}/reviews
+	if strings.Contains(path, "/reviews") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/questionnaire-instances/", "/reviews")
+		var body store.AnswerReview
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.InstanceID = id
+		body.Reviewer = ac.PrincipalID
+		got, err := a.Store.UpsertAnswerReview(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "review_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
+
+	// GET /questionnaire-instances/{id}/reviews or /score
+	if strings.HasSuffix(path, "/score") && r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/questionnaire-instances/", "/score")
+		sum, n, err := a.Store.InstanceScore(r.Context(), id)
+		if err != nil {
+			writeProblem(w, 500, "error", "score failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"instance_id": id, "score_sum": sum, "reviewed": n})
+		return
+	}
+
+	if strings.Contains(path, "/reviews") && r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/questionnaire-instances/", "/reviews")
+		items, err := a.Store.ListAnswerReviews(r.Context(), id)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+		return
+	}
+
+	// GET /questionnaire-instances/{id}:delta — AT-15 prefill
+	if strings.Contains(path, ":delta") && r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/questionnaire-instances/", ":delta")
+		inst, err := a.Store.GetQuestionnaireInstance(r.Context(), id)
+		if err != nil {
+			writeProblem(w, 404, "not_found", "instance not found")
+			return
+		}
+		priorID := inst.DeltaOf
+		if priorID == "" {
+			priorID = id
+		}
+		current, _, _ := a.Store.LatestAnswers(r.Context(), id)
+		delta, err := a.Store.DeltaPrefillForInstance(r.Context(), priorID, current)
+		if err != nil {
+			writeProblem(w, 500, "error", err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"instance": inst, "delta": delta})
+		return
+	}
+
+	// GET /questionnaire-instances/{id}
+	if strings.HasPrefix(path, "/questionnaire-instances/") && r.Method == http.MethodGet &&
+		!strings.Contains(path, "/") {
+		// fall through — single segment handled below
+	}
+	if rest := strings.TrimPrefix(path, "/questionnaire-instances/"); rest != "" && rest != path && r.Method == http.MethodGet {
+		if !strings.Contains(rest, "/") && !strings.Contains(rest, ":") {
+			if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire_instance", ID: rest}) {
+				return
+			}
+			inst, err := a.Store.GetQuestionnaireInstance(r.Context(), rest)
+			if err != nil {
+				writeProblem(w, 404, "not_found", "instance not found")
+				return
+			}
+			writeJSON(w, 200, inst)
+			return
+		}
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListQuestionnaireInstances(r.Context(), r.URL.Query().Get("engagement_id"))
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "questionnaire_instance", ID: "*"}) {
+			return
+		}
+		var body store.QuestionnaireInstance
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.ID = uuid.Must(uuid.NewV7()).String()
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		got, err := a.Store.CreateQuestionnaireInstance(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		out := map[string]any{"instance": got}
+		if got.DeltaOf != "" {
+			delta, err := a.Store.DeltaPrefillForInstance(r.Context(), got.DeltaOf, nil)
+			if err == nil {
+				out["delta"] = delta
+			}
+		}
+		writeJSON(w, 201, out)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
 }
 
 func (a *App) handleUploads(w http.ResponseWriter, r *http.Request, ac authz.Context) {
@@ -427,6 +607,107 @@ func (a *App) handleUploads(w http.ResponseWriter, r *http.Request, ac authz.Con
 }
 
 func (a *App) handleEvidence(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+
+	// PUT /evidence/{id}/pages — store sanitized viewer text
+	if strings.Contains(path, "/pages") && r.Method == http.MethodPut {
+		if !a.authorize(w, ac, authz.ActionEngagementWrite, authz.Resource{Type: "evidence", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/evidence/", "/pages")
+		var body store.EvidencePage
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.EvidenceID = id
+		got, err := a.Store.PutEvidencePage(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "page_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
+
+	// GET /evidence/{id}/pages/{n}/text — safe viewer stub
+	if strings.Contains(path, "/pages/") && strings.HasSuffix(path, "/text") && r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionEvidenceReadContent, authz.Resource{Type: "evidence", ID: "*"}) {
+			return
+		}
+		rest := strings.TrimPrefix(path, "/evidence/")
+		parts := strings.Split(rest, "/")
+		if len(parts) < 4 {
+			writeProblem(w, 400, "bad_request", "page number required")
+			return
+		}
+		pageNum, err := strconv.Atoi(parts[2])
+		if err != nil || pageNum < 1 {
+			writeProblem(w, 400, "bad_request", "invalid page")
+			return
+		}
+		p, err := a.Store.GetEvidencePage(r.Context(), parts[0], pageNum)
+		if err != nil {
+			writeProblem(w, 404, "not_found", "page not found")
+			return
+		}
+		writeJSON(w, 200, evidence.ViewerPageStub{
+			EvidenceID: p.EvidenceID, PageNum: p.PageNum, Text: p.TextContent, TextSHA256: p.TextSHA256, Safe: true,
+		})
+		return
+	}
+
+	if strings.Contains(path, "/pages") && r.Method == http.MethodGet {
+		if !a.authorize(w, ac, authz.ActionEvidenceReadContent, authz.Resource{Type: "evidence", ID: "*"}) {
+			return
+		}
+		id := extractID(r.URL.Path, "/api/v1/evidence/", "/pages")
+		items, err := a.Store.ListEvidencePages(r.Context(), id)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+		return
+	}
+
+	// PUT/GET /evidence/{id}/soc-review
+	if strings.Contains(path, "/soc-review") {
+		id := extractID(r.URL.Path, "/api/v1/evidence/", "/soc-review")
+		switch r.Method {
+		case http.MethodGet:
+			if !a.authorize(w, ac, authz.ActionEvidenceReadContent, authz.Resource{Type: "evidence", ID: id}) {
+				return
+			}
+			rev, err := a.Store.GetSOCReview(r.Context(), id)
+			if err != nil {
+				writeProblem(w, 404, "not_found", "soc review not found")
+				return
+			}
+			writeJSON(w, 200, rev)
+		case http.MethodPut, http.MethodPost:
+			if !a.authorize(w, ac, authz.ActionEngagementWrite, authz.Resource{Type: "evidence", ID: id}) {
+				return
+			}
+			var body store.SOCReview
+			if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&body); err != nil {
+				writeProblem(w, 400, "bad_request", "invalid json")
+				return
+			}
+			body.EvidenceID = id
+			body.UpdatedBy = ac.PrincipalID
+			got, err := a.Store.UpsertSOCReview(r.Context(), body)
+			if err != nil {
+				writeProblem(w, 422, "soc_review_failed", err.Error())
+				return
+			}
+			writeJSON(w, 200, got)
+		default:
+			writeProblem(w, 405, "method_not_allowed", "method not allowed")
+		}
+		return
+	}
+
 	if !a.authorize(w, ac, authz.ActionEvidenceReadContent, authz.Resource{Type: "evidence", ID: "*"}) {
 		return
 	}
@@ -446,16 +727,29 @@ func (a *App) handleFindings(w http.ResponseWriter, r *http.Request, ac authz.Co
 	if !a.authorize(w, ac, action, authz.Resource{Type: "finding", ID: "*"}) {
 		return
 	}
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		items, err := a.Store.ListFindings(r.Context())
 		if err != nil {
 			writeProblem(w, 500, "error", "list failed")
 			return
 		}
 		writeJSON(w, 200, map[string]any{"items": items})
-		return
+	case http.MethodPost:
+		var body store.Finding
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		got, err := a.Store.CreateFinding(r.Context(), body, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
 	}
-	writeProblem(w, 405, "method_not_allowed", "method not allowed")
 }
 
 func (a *App) handleRisk(w http.ResponseWriter, r *http.Request, ac authz.Context) {
@@ -508,25 +802,136 @@ func (a *App) handleExceptions(w http.ResponseWriter, r *http.Request, ac authz.
 }
 
 func (a *App) handleContracts(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "contract", ID: "*"}) {
-		return
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "contract", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListContracts(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "contract", ID: "*"}) {
+			return
+		}
+		var body store.ContractRecord
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		got, err := a.Store.CreateContract(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
 	}
-	writeJSON(w, 200, map[string]any{"items": []any{}})
 }
 
 func (a *App) handleMonitoring(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "monitoring", ID: "*"}) {
-		return
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "monitoring", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListMonitoringSignals(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "monitoring", ID: "*"}) {
+			return
+		}
+		var body store.MonitoringSignal
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.UpdatedBy = ac.PrincipalID
+		got, err := a.Store.CreateMonitoringSignal(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
 	}
-	writeJSON(w, 200, map[string]any{"items": []any{}})
 }
 
 func (a *App) handleSuggestions(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	writeJSON(w, 200, map[string]any{"items": []any{}})
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "suggestion", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListSuggestions(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionSuggest, authz.Resource{Type: "suggestion", ID: "*"}) {
+			return
+		}
+		var body store.Suggestion
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.DelegatorID = ac.PrincipalID
+		got, err := a.Store.CreateSuggestion(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
 }
 
 func (a *App) handleChangeRequests(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	writeJSON(w, 200, map[string]any{"items": []any{}})
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "change_request", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListChangeRequests(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionChangeRequest, authz.Resource{Type: "change_request", ID: "*"}) {
+			return
+		}
+		var body store.ChangeRequest
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.DelegatorID = ac.PrincipalID
+		got, err := a.Store.CreateChangeRequest(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
 }
 
 func (a *App) handleAgentClients(w http.ResponseWriter, r *http.Request, ac authz.Context) {
@@ -534,7 +939,34 @@ func (a *App) handleAgentClients(w http.ResponseWriter, r *http.Request, ac auth
 		writeProblem(w, 403, "forbidden", "security_administrator required")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": []any{}})
+	switch r.Method {
+	case http.MethodGet:
+		items, err := a.Store.ListAgentClients(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		var body store.AgentClient
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		if body.OwnerUserID == "" {
+			body.OwnerUserID = ac.PrincipalID
+		}
+		got, err := a.Store.CreateAgentClient(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
 }
 
 func (a *App) handleModels(w http.ResponseWriter, r *http.Request, ac authz.Context) {
@@ -542,10 +974,65 @@ func (a *App) handleModels(w http.ResponseWriter, r *http.Request, ac authz.Cont
 		writeProblem(w, 403, "forbidden", "security_administrator required")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": []any{}})
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	isEndpoints := strings.HasPrefix(path, "/model-endpoints")
+	switch r.Method {
+	case http.MethodGet:
+		if isEndpoints {
+			items, err := a.Store.ListModelEndpoints(r.Context())
+			if err != nil {
+				writeProblem(w, 500, "error", "list failed")
+				return
+			}
+			writeJSON(w, 200, map[string]any{"items": items})
+			return
+		}
+		items, err := a.Store.ListModels(r.Context())
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if isEndpoints {
+			var body store.ModelEndpoint
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+				writeProblem(w, 400, "bad_request", "invalid json")
+				return
+			}
+			body.CreatedBy = ac.PrincipalID
+			got, err := a.Store.CreateModelEndpoint(r.Context(), body)
+			if err != nil {
+				writeProblem(w, 422, "create_failed", err.Error())
+				return
+			}
+			writeJSON(w, 201, got)
+			return
+		}
+		var body store.ModelRecord
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		got, err := a.Store.CreateModel(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
 }
 
 func (a *App) handleAgentREST(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if path == "/agent/tools" && r.Method == http.MethodGet {
+		gw := a.ensureGateway()
+		tools := gw.VisibleTools(ac)
+		writeJSON(w, 200, map[string]any{"items": tools, "note": "invoke via POST /mcp"})
+		return
+	}
 	writeProblem(w, 501, "not_implemented", "use /mcp via Agent Gateway")
 }
 

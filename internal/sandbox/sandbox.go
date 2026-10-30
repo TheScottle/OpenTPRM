@@ -67,6 +67,8 @@ func Run(bin string, job Job) error {
 }
 
 // RunConstrained is Run with explicit Landlock-oriented path policy.
+// The child (`opentprm sandbox`) applies Landlock/no_new_privs hooks; the parent
+// enforces allow-list validation and empty env (no network config).
 func RunConstrained(bin string, job Job, c Constraints) error {
 	if err := ValidateJob(job, c); err != nil {
 		return err
@@ -74,7 +76,10 @@ func RunConstrained(bin string, job Job, c Constraints) error {
 	if job.Timeout == 0 {
 		job.Timeout = 60 * time.Second
 	}
-	cmd := exec.Command(bin, "sandbox", job.ID, job.InputPath)
+	cmd := exec.Command(bin, "sandbox", "--job", job.ID, "--input", job.InputPath)
+	for _, p := range c.AllowPaths {
+		cmd.Args = append(cmd.Args, "--allow", p)
+	}
 	if c.ForbidNetwork {
 		cmd.Env = []string{} // empty environment — no HTTP_PROXY / resolv hints
 	}

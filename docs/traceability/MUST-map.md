@@ -9,12 +9,15 @@
 | AT-01 | `TestAT_01_PrivilegedAndClientConfidential`, `TestAT_01_IntakeSubmitHTTPE2E` |
 | ASM-001 | `TestASM_001_*` |
 | AT-07 / QST | `TestQST_PublishAndSTD006Seeds`, `TestAT_07_LockedCellEditRejected`, `TestOfflineZipRoundTripAndLockedCell` |
+| AT-15 | `TestAT_15_DeltaPrefill`, `TestQST_InstanceResponseReviewAndAT15Delta`, `TestAT_15_DeltaInstanceHTTPE2E` |
 | STD-006 | `TestQST_PublishAndSTD006Seeds` / `ValidateProvenanceJSON` |
 | QST-010 | `TestImportOSCALCatalog`, `TestImportCSVAndFormulaRefuse`, `TestImportXLSXHappyPath` |
 | QST-011 | `TestQST_011_ArchiveBombRejected`, `TestQST_011_XLSXMacroPathRefused`, `TestEVD_UploadRejectsArchiveBomb` |
 | AT-08 | `TestAT_08_ArchiveBombRejectedAtValidation`, `TestEVD_UploadRejectsArchiveBomb` |
 | EVD chunked upload | `TestEVD_ChunkedUploadCompleteQuarantine`, `TestBlobRoundTrip` |
-| SEC-UP sandbox | `TestSandboxValidateJobAllowList`, `TestSandboxForbidNetworkEnv` |
+| EVD-007 safe viewer | `TestSanitizeViewerTextStripsControlsAndTags`, `TestEVD_EvidencePageAndSOCReview` |
+| EVD-020 SOC schema | `TestSOCReviewSchemaEmbedded`, `TestEVD_EvidencePageAndSOCReview` |
+| SEC-UP sandbox | `TestSandboxValidateJobAllowList`, `TestSandboxForbidNetworkEnv`, `TestSandboxProbeIsolation`, `TestSandboxApplyChildHooks*` |
 | AT-14 / ARC-003 | `TestAT_14_ShredLeavesTombstone` |
 | AT-02 | `TestAT_02_RestrictedRecord404Semantics` |
 | AT-03 | `TestAT_03_NoApproveToolListed` |

@@ -2,7 +2,7 @@
 
 Ordered by security-first milestone. Each slice lists concrete file targets and exit tests. Do not claim a milestone complete unless its exit gate truly passes.
 
-**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**. M3 start: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**, blob Get round-trip, sandbox path allow-list / empty-env checks. M5: Idempotency-Key middleware + vendor ETags present; oapi-codegen and replacing remaining empty catalog handlers still open.
+**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**; **instance/response/review/scoring store+HTTP + AT-15 delta HTTP E2E**. M3: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**; blob Get round-trip; sandbox path allow-list / empty-env; **Landlock/seccomp probe + child hooks (degraded OK in CI)**; **evidence page text storage + safe viewer stubs**; **SOC review JSON Schema (`api/schemas/soc-review-v1.json`)**. M5: Idempotency-Key middleware + vendor ETags; **store-backed findings/contracts/monitoring/suggestions/change-requests/agent-clients/models**; expanded OpenAPI; `/agent/tools` lists registry (`/agent/call` still 501 → MCP). oapi-codegen still open.
 
 ## M0 — Secure skeleton (auth essentials still open)
 
@@ -41,7 +41,7 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M2 — Questionnaires
 
-**Done (partial):** template/version/publish store API; Core/Lite/Intake seeds with STD-006 provenance; QST SOD publish tests; **signed offline zip Pack/Unpack + AT-07**; **OSCAL catalog import + CSV/XLSX mapping imports**; **QST-011 limits**.
+**Done (partial):** template/version/publish store API; Core/Lite/Intake seeds with STD-006 provenance; QST SOD publish tests; **signed offline zip Pack/Unpack + AT-07**; **OSCAL catalog import + CSV/XLSX mapping imports**; **QST-011 limits**; **instances/responses/reviews/scoring + AT-15 delta HTTP**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
@@ -50,40 +50,40 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 | OSCAL + generic CSV/XLSX import | `import_oscal.go`, `import_tabular.go` | `TestImportOSCALCatalog`, `TestImportCSV*`, `TestImportXLSXHappyPath` |
 | Offline packages | `offline.go` PackZip/UnpackZip | `TestOfflineZipRoundTripAndLockedCell`, `TestAT_07_*` |
 | QST-011 limits | `limits.go` + import path | `TestQST_011_*` |
-| Instances/responses/review/scoring API | store + handlers | instance E2E |
-| Answer library + delta HTTP | wire `delta.go` to instances | AT-15 (domain done; HTTP open) |
+| Instances/responses/review/scoring API | `store/instances.go` + handlers | `TestQST_InstanceResponseReviewAndAT15Delta`, `TestAT_15_DeltaInstanceHTTPE2E` |
+| Answer library + delta HTTP | delta wired on create + `:delta` | AT-15 HTTP done; answer library table/UI open |
 
 ## M3 — Evidence sandbox
 
-**Done (partial):** magic/quarantine/AT-08 validation; detectors; **chunked upload sessions + complete → blob + quarantine**; blob Get round-trip; sandbox path allow-list + empty-env network forbid.
+**Done (partial):** magic/quarantine/AT-08 validation; detectors; **chunked upload sessions + complete → blob + quarantine**; blob Get round-trip; sandbox path allow-list + empty-env network forbid; **Landlock probe + ApplyChildHooks (degraded without ABI)**; **evidence_pages + SanitizeViewerText stubs**; **SOC review schema embed**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Chunked uploads | `store/uploads.go`, `/uploads` + `:complete` | `TestEVD_ChunkedUploadCompleteQuarantine` |
-| Landlock/seccomp + Wasm PDFium | `internal/sandbox/`, `opentprm sandbox` | path allow-list tests done; real Landlock/Wasm open |
-| Blob round-trip + safe viewer | `internal/blob/` Get/Put | `TestBlobRoundTrip`; viewer pages open |
-| SOC schemas + fuzz corpora | `api/schemas/`, `testdata/fuzz/` | schema validate + fuzz |
+| Landlock/seccomp + Wasm PDFium | `internal/sandbox/isolation_*.go`, `opentprm sandbox` | probe/hooks tests; real Wasm PDFium still open |
+| Blob round-trip + safe viewer | `internal/blob/` Get/Put; `evidence/viewer.go` + pages API | `TestBlobRoundTrip`; `TestSanitizeViewerText*`; page stubs |
+| SOC schemas + fuzz corpora | `api/schemas/soc-review-v1.json` | `TestSOCReviewSchemaEmbedded`; fuzz corpora still open |
 
 ## M4 — Risk / contracts / ops
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Findings/remediation, risk register | store + handlers | FND/RSK tests |
-| Contracts/obligations/clients | migrations + API | CON tests |
-| Monitoring + offboarding | domain + API | MON/OFF tests |
+| Findings/remediation, risk register | store + handlers (findings create/list started in M5 slice) | FND/RSK tests |
+| Contracts/obligations/clients | migrations + API (contracts list/create store-backed) | CON tests |
+| Monitoring + offboarding | domain + API (signals list/create store-backed) | MON/OFF tests |
 | Reports/exports/markings | export pipeline | RPT + step-up for bulk |
 | Retention/legal hold + backup CLI | `internal/backup/`, `opentprm backup\|restore` | ARC/AT-14 + restore verify |
 
 ## M5 — OpenAPI contract
 
-**Done (partial):** expanded OpenAPI catalog (incl. upload chunk/complete); vendor ETags; Idempotency-Key middleware with replay header.
+**Done (partial):** expanded OpenAPI catalog (instances, evidence pages/SOC, catalog POSTs); vendor ETags; Idempotency-Key middleware with replay header; **store-backed catalog handlers** (findings, contracts, monitoring, suggestions, change-requests, agent-clients, models/endpoints); `/agent/tools` returns registry.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Complete OpenAPI §10.2 | `api/openapi.yaml` | schema lint |
+| Complete OpenAPI §10.2 | `api/openapi.yaml` | schema lint (expanded; full §10.2 still open) |
 | oapi-codegen stubs | generated server types | compile |
 | ETags / Idempotency / cursors | middleware + store row_version | contract tests (idempotency covered in AT-01 HTTP) |
-| Replace empty/501 handlers | `handlers_domain.go` | no 501 on catalog paths |
+| Replace empty/501 handlers | `handlers_domain.go` + `store/catalog.go` | catalog paths store-backed; `/agent/call` remains 501→MCP by design |
 
 ## M6 — OAuth AS + MCP
 
@@ -98,7 +98,7 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Model/endpoint registries | admin API | AI registry tests |
+| Model/endpoint registries | admin API (list/create store-backed start) | AI registry tests |
 | Inference jobs + eval harness | `internal/ai/`, `evals/` | AT-04 + eval CI |
 | AI labels/logging | audit + response headers | AI label tests |
 
@@ -123,5 +123,5 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 - `web/templates` empty → real UI
 - Dev `X-OpenTPRM-*` headers → session/OIDC/DPoP only in production
 - Store incomplete vs migrations → close field gaps per milestone
-- `api/schemas` and `evals/` empty → fill in M3/M7
+- `evals/` empty → fill in M7; `api/schemas` started (SOC review)
 - Traceability: keep `docs/traceability/MUST-map.md` updated as tests land

@@ -26,14 +26,15 @@ permit (
 // Risk analysts may read vendors (coarse; object checks still apply).
 permit (
   principal is User,
-  action in [Action::"vendor:read", Action::"engagement:read", Action::"assessment:read"],
+  action in [Action::"vendor:read", Action::"engagement:read", Action::"assessment:read", Action::"finding:read"],
   resource
 )
 when { principal.roles.contains("risk_analyst") || principal.roles.contains("tprm_program_manager") || principal.roles.contains("approver") || principal.roles.contains("auditor") || principal.roles.contains("viewer") };
 
 permit (
   principal is User,
-  action in [Action::"vendor:write", Action::"engagement:write", Action::"intake:submit", Action::"assessment:transition"],
+  action in [Action::"vendor:write", Action::"engagement:write", Action::"intake:submit", Action::"assessment:transition",
+             Action::"finding:write", Action::"suggestion:create", Action::"change_request:create"],
   resource
 )
 when { principal.roles.contains("risk_analyst") || principal.roles.contains("tprm_program_manager") || principal.roles.contains("relationship_owner") };

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "opentprm/soc-review/v1",
+  "title": "OpenTPRM SOC Review Form",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report_type", "service_org", "auditor", "period", "opinion"],
+  "properties": {
+    "report_type": {
+      "enum": ["SOC1_T1", "SOC1_T2", "SOC2_T1", "SOC2_T2", "SOC3"]
+    },
+    "service_org": { "type": "string", "maxLength": 300 },
+    "auditor": { "type": "string", "maxLength": 300 },
+    "report_date": { "type": "string", "format": "date" },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "string", "format": "date" },
+        "end": { "type": "string", "format": "date" }
+      }
+    },
+    "tsc_categories": {
+      "type": "array",
+      "items": {
+        "enum": ["security", "availability", "confidentiality", "processing_integrity", "privacy"]
+      },
+      "uniqueItems": true
+    },
+    "opinion": {
+      "enum": ["unmodified", "qualified", "adverse", "disclaimer"]
+    },
+    "exceptions": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/exception" }
+    },
+    "cuecs": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/cuec" }
+    },
+    "subservice_orgs": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/subservice" }
+    }
+  },
+  "$defs": {
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "span_sha256"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "section": { "type": "string", "maxLength": 120 },
+        "span_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control_ref", "description", "citation"],
+      "properties": {
+        "control_ref": { "type": "string", "maxLength": 40 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "management_response": { "type": "string", "maxLength": 4000 },
+        "citation": { "$ref": "#/$defs/citation" }
+      }
+    },
+    "cuec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "citation"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 2000 },
+        "internal_control_id": { "type": "string" },
+        "citation": { "$ref": "#/$defs/citation" }
+      }
+    },
+    "subservice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "method"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 300 },
+        "method": { "enum": ["carve_out", "inclusive"] },
+        "citation": { "$ref": "#/$defs/citation" }
+      }
+    }
+  }
+}

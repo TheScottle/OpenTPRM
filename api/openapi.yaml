@@ -176,11 +176,115 @@ paths:
       operationId: listQuestionnaireTemplates
       responses:
         "200": { description: OK }
+    post:
+      tags: [questionnaires]
+      summary: Create questionnaire template
+      operationId: createQuestionnaireTemplate
+      responses:
+        "201": { description: Created }
+  /questionnaire-templates/{id}/versions:
+    get:
+      tags: [questionnaires]
+      summary: List template versions
+      operationId: listTemplateVersions
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [questionnaires]
+      summary: Create draft template version
+      operationId: createTemplateVersion
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "201": { description: Created }
+  "/questionnaire-templates/{id}/versions/{vid}:publish":
+    post:
+      tags: [questionnaires]
+      summary: Publish template version (SOD)
+      operationId: publishTemplateVersion
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - name: vid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Published }
+        "422": { description: Publish failed }
   /questionnaire-instances:
     get:
       tags: [questionnaires]
       summary: List questionnaire instances
       operationId: listQuestionnaireInstances
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [questionnaires]
+      summary: Create instance (optional delta_of for AT-15)
+      operationId: createQuestionnaireInstance
+      responses:
+        "201": { description: Created with optional delta prefill }
+  /questionnaire-instances/{id}:
+    get:
+      tags: [questionnaires]
+      summary: Get questionnaire instance
+      operationId: getQuestionnaireInstance
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+  "/questionnaire-instances/{id}:delta":
+    get:
+      tags: [questionnaires]
+      summary: AT-15 delta prefill for reassessment instance
+      operationId: getQuestionnaireInstanceDelta
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: Prefill with changed and confirm keys }
+  /questionnaire-instances/{id}/responses:
+    get:
+      tags: [questionnaires]
+      summary: List response revisions
+      operationId: listInstanceResponses
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [questionnaires]
+      summary: Append response revision
+      operationId: appendInstanceResponse
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "201": { description: Created }
+  /questionnaire-instances/{id}/reviews:
+    get:
+      tags: [questionnaires]
+      summary: List answer reviews
+      operationId: listInstanceReviews
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [questionnaires]
+      summary: Upsert answer review/score
+      operationId: upsertInstanceReview
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+  /questionnaire-instances/{id}/score:
+    get:
+      tags: [questionnaires]
+      summary: Aggregate review score
+      operationId: getInstanceScore
+      parameters:
+        - $ref: "#/components/parameters/ID"
       responses:
         "200": { description: OK }
   /uploads:
@@ -219,6 +323,53 @@ paths:
       operationId: listEvidence
       responses:
         "200": { description: OK }
+  /evidence/{id}/pages:
+    get:
+      tags: [evidence]
+      summary: List safe-viewer pages
+      operationId: listEvidencePages
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    put:
+      tags: [evidence]
+      summary: Store sanitized page text
+      operationId: putEvidencePage
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+  /evidence/{id}/pages/{page}/text:
+    get:
+      tags: [evidence]
+      summary: Safe viewer text stub (EVD-007)
+      operationId: getEvidencePageText
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - name: page
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: Sanitized text }
+  /evidence/{id}/soc-review:
+    get:
+      tags: [evidence]
+      summary: Get SOC review (EVD-020 schema)
+      operationId: getSOCReview
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    put:
+      tags: [evidence]
+      summary: Upsert SOC review JSON
+      operationId: putSOCReview
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
   /findings:
     get:
       tags: [findings]
@@ -226,6 +377,12 @@ paths:
       operationId: listFindings
       responses:
         "200": { description: OK }
+    post:
+      tags: [findings]
+      summary: Create finding
+      operationId: createFinding
+      responses:
+        "201": { description: Created }
   /risk/compute:
     post:
       tags: [risk]
@@ -257,6 +414,12 @@ paths:
       operationId: listContracts
       responses:
         "200": { description: OK }
+    post:
+      tags: [contracts]
+      summary: Create contract
+      operationId: createContract
+      responses:
+        "201": { description: Created }
   /monitoring/signals:
     get:
       tags: [monitoring]
@@ -264,6 +427,12 @@ paths:
       operationId: listMonitoringSignals
       responses:
         "200": { description: OK }
+    post:
+      tags: [monitoring]
+      summary: Create monitoring signal
+      operationId: createMonitoringSignal
+      responses:
+        "201": { description: Created }
   /suggestions:
     get:
       tags: [agents]
@@ -271,6 +440,12 @@ paths:
       operationId: listSuggestions
       responses:
         "200": { description: OK }
+    post:
+      tags: [agents]
+      summary: Create AI suggestion
+      operationId: createSuggestion
+      responses:
+        "201": { description: Created }
   /change-requests:
     get:
       tags: [agents]
@@ -278,6 +453,12 @@ paths:
       operationId: listChangeRequests
       responses:
         "200": { description: OK }
+    post:
+      tags: [agents]
+      summary: Create change request
+      operationId: createChangeRequest
+      responses:
+        "201": { description: Created }
   /agent-clients:
     get:
       tags: [agents]
@@ -285,6 +466,12 @@ paths:
       operationId: listAgentClients
       responses:
         "200": { description: OK }
+    post:
+      tags: [agents]
+      summary: Create agent client
+      operationId: createAgentClient
+      responses:
+        "201": { description: Created }
   /model-endpoints:
     get:
       tags: [agents]
@@ -292,6 +479,12 @@ paths:
       operationId: listModelEndpoints
       responses:
         "200": { description: OK }
+    post:
+      tags: [agents]
+      summary: Register model endpoint
+      operationId: createModelEndpoint
+      responses:
+        "201": { description: Created }
   /models:
     get:
       tags: [agents]
@@ -299,10 +492,16 @@ paths:
       operationId: listModels
       responses:
         "200": { description: OK }
+    post:
+      tags: [agents]
+      summary: Register model
+      operationId: createModel
+      responses:
+        "201": { description: Created }
   /agent/tools:
     get:
       tags: [agents]
-      summary: Agent tool registry (OpenAI function format)
+      summary: Agent tool registry (invoke via /mcp)
       operationId: agentTools
       responses:
         "200": { description: OK }
