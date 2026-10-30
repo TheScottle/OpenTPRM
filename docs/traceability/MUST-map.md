@@ -18,7 +18,15 @@
 | EVD-007 safe viewer | `TestSanitizeViewerTextStripsControlsAndTags`, `TestEVD_EvidencePageAndSOCReview` |
 | EVD-020 SOC schema | `TestSOCReviewSchemaEmbedded`, `TestEVD_EvidencePageAndSOCReview` |
 | SEC-UP sandbox | `TestSandboxValidateJobAllowList`, `TestSandboxForbidNetworkEnv`, `TestSandboxProbeIsolation`, `TestSandboxApplyChildHooks*` |
-| AT-14 / ARC-003 | `TestAT_14_ShredLeavesTombstone` |
+| SEC-UP-002 fuzz | `FuzzValidateUpload` (+ `testdata/fuzz/ValidateUpload`) |
+| FND-002 / FND-003 / FND-005 | `TestFND_002_StatusTransitions`, `TestFND_003_DefaultSLA`, `TestFND_RSK_RemediationAndRegister` |
+| RSK-001 / RSK-003 | `TestFND_RSK_RemediationAndRegister` |
+| CON-002 / CON-003 / CON-004 | `TestCON_002_004_ClausesAndFlowDown`, `TestCON_ObligationsAndFlowDown` |
+| MON-005 | `TestMON_005_Dispositions`, `TestMON_OFF_DispositionAndChecklist` |
+| OFF-001 | `TestOFF_001_DefaultChecklist`, `TestMON_OFF_DispositionAndChecklist` |
+| ARC-001 / ARC-002 / ARC-004 | `TestARC_002_LegalHoldBlocksShred` |
+| ARC-010 / ARC-013 | `TestARC_013_RestoreVerifyOnly` |
+| AT-14 / ARC-003 | `TestAT_14_ShredLeavesTombstone`, `TestARC_002_LegalHoldBlocksShred` |
 | AT-02 | `TestAT_02_RestrictedRecord404Semantics` |
 | AT-03 | `TestAT_03_NoApproveToolListed` |
 | AT-09 | `TestAT_09_HeaderBodyNameMismatch` |

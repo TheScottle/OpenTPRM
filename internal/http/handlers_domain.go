@@ -720,6 +720,63 @@ func (a *App) handleEvidence(w http.ResponseWriter, r *http.Request, ac authz.Co
 }
 
 func (a *App) handleFindings(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.Contains(path, ":transition") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionFindingWrite, authz.Resource{Type: "finding", ID: "*"}) {
+			return
+		}
+		id := extractID(path, "/findings/", ":transition")
+		var body struct {
+			Status            string `json:"status"`
+			ClosureEvidenceID string `json:"closure_evidence_id"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		got, err := a.Store.TransitionFinding(r.Context(), id, body.Status, ac.PrincipalID, body.ClosureEvidenceID)
+		if err != nil {
+			writeProblem(w, 422, "transition_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
+	if strings.HasSuffix(path, "/remediation-plan") {
+		fid := strings.TrimSuffix(strings.TrimPrefix(path, "/findings/"), "/remediation-plan")
+		fid = strings.Trim(fid, "/")
+		switch r.Method {
+		case http.MethodGet:
+			if !a.authorize(w, ac, authz.ActionFindingRead, authz.Resource{Type: "finding", ID: fid}) {
+				return
+			}
+			got, err := a.Store.GetRemediationPlan(r.Context(), fid)
+			if err != nil {
+				writeProblem(w, 404, "not_found", "remediation plan not found")
+				return
+			}
+			writeJSON(w, 200, got)
+		case http.MethodPut, http.MethodPost:
+			if !a.authorize(w, ac, authz.ActionFindingWrite, authz.Resource{Type: "finding", ID: fid}) {
+				return
+			}
+			var body store.RemediationPlan
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+				writeProblem(w, 400, "bad_request", "invalid json")
+				return
+			}
+			body.FindingID = fid
+			got, err := a.Store.UpsertRemediationPlan(r.Context(), body)
+			if err != nil {
+				writeProblem(w, 422, "remediation_failed", err.Error())
+				return
+			}
+			writeJSON(w, 200, got)
+		default:
+			writeProblem(w, 405, "method_not_allowed", "method not allowed")
+		}
+		return
+	}
 	action := authz.ActionFindingRead
 	if r.Method != http.MethodGet {
 		action = authz.ActionFindingWrite
@@ -753,6 +810,40 @@ func (a *App) handleFindings(w http.ResponseWriter, r *http.Request, ac authz.Co
 }
 
 func (a *App) handleRisk(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if path == "/risk-register" || strings.HasPrefix(path, "/risk-register") {
+		if !a.authorize(w, ac, authz.ActionAssessmentRead, authz.Resource{Type: "risk", ID: "*"}) {
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			items, err := a.Store.ListRiskResults(r.Context(), r.URL.Query().Get("engagement_id"))
+			if err != nil {
+				writeProblem(w, 500, "error", "list failed")
+				return
+			}
+			writeJSON(w, 200, map[string]any{"items": items})
+		case http.MethodPost:
+			var body struct {
+				EngagementID string     `json:"engagement_id"`
+				AssessmentID string     `json:"assessment_id"`
+				Input        risk.Input `json:"input"`
+			}
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+				writeProblem(w, 400, "bad_request", "invalid json")
+				return
+			}
+			got, err := a.Store.PersistRiskResult(r.Context(), body.EngagementID, body.AssessmentID, ac.PrincipalID, body.Input)
+			if err != nil {
+				writeProblem(w, 422, "persist_failed", err.Error())
+				return
+			}
+			writeJSON(w, 201, got)
+		default:
+			writeProblem(w, 405, "method_not_allowed", "method not allowed")
+		}
+		return
+	}
 	if !a.authorize(w, ac, authz.ActionAssessmentRead, authz.Resource{Type: "risk", ID: "*"}) {
 		return
 	}
@@ -765,7 +856,12 @@ func (a *App) handleRisk(w http.ResponseWriter, r *http.Request, ac authz.Contex
 		writeJSON(w, 200, risk.Compute(in))
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": []any{}})
+	items, err := a.Store.ListRiskResults(r.Context(), "")
+	if err != nil {
+		writeProblem(w, 500, "error", "list failed")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": items})
 }
 
 func (a *App) handleExceptions(w http.ResponseWriter, r *http.Request, ac authz.Context) {
@@ -836,6 +932,27 @@ func (a *App) handleContracts(w http.ResponseWriter, r *http.Request, ac authz.C
 }
 
 func (a *App) handleMonitoring(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.Contains(path, ":disposition") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "monitoring", ID: "*"}) {
+			return
+		}
+		id := extractID(path, "/monitoring/signals/", ":disposition")
+		var body struct {
+			Disposition string `json:"disposition"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		got, err := a.Store.SetMonitoringDisposition(r.Context(), id, body.Disposition, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "disposition_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "monitoring", ID: "*"}) {
@@ -866,6 +983,211 @@ func (a *App) handleMonitoring(w http.ResponseWriter, r *http.Request, ac authz.
 	default:
 		writeProblem(w, 405, "method_not_allowed", "method not allowed")
 	}
+}
+
+func (a *App) handleObligations(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "obligation", ID: "*"}) {
+			return
+		}
+		items, err := a.Store.ListObligations(r.Context(), r.URL.Query().Get("engagement_id"))
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "obligation", ID: "*"}) {
+			return
+		}
+		var body store.Obligation
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		got, err := a.Store.CreateObligation(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
+}
+
+func (a *App) handleClients(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.HasSuffix(path, "/requirements:flow-down") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "client", ID: "*"}) {
+			return
+		}
+		// /clients/{id}/requirements/{rid}:flow-down
+		rest := strings.TrimPrefix(path, "/clients/")
+		parts := strings.Split(rest, "/")
+		if len(parts) < 3 {
+			writeProblem(w, 400, "bad_request", "client and requirement id required")
+			return
+		}
+		reqID := strings.TrimSuffix(parts[2], ":flow-down")
+		var body struct {
+			EngagementID string `json:"engagement_id"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		got, err := a.Store.FlowDownRequirement(r.Context(), reqID, body.EngagementID, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "flow_down_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+		return
+	}
+	if strings.HasSuffix(path, "/requirements") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "client", ID: "*"}) {
+			return
+		}
+		cid := strings.TrimSuffix(strings.TrimPrefix(path, "/clients/"), "/requirements")
+		cid = strings.Trim(cid, "/")
+		var body store.ClientRequirement
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.ClientID = cid
+		body.CreatedBy = ac.PrincipalID
+		got, err := a.Store.CreateClientRequirement(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+		return
+	}
+	if r.Method == http.MethodPost && path == "/clients" {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "client", ID: "*"}) {
+			return
+		}
+		var body store.ClientRecord
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.CreatedBy = ac.PrincipalID
+		body.UpdatedBy = ac.PrincipalID
+		got, err := a.Store.CreateClient(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+		return
+	}
+	writeProblem(w, 405, "method_not_allowed", "method not allowed")
+}
+
+func (a *App) handleOffboarding(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.HasSuffix(path, "/items") && (r.Method == http.MethodPost || r.Method == http.MethodPatch) {
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "offboarding", ID: "*"}) {
+			return
+		}
+		eid := strings.TrimSuffix(strings.TrimPrefix(path, "/offboarding/"), "/items")
+		eid = strings.Trim(eid, "/")
+		var body struct {
+			ItemID      string `json:"item_id"`
+			Done        bool   `json:"done"`
+			EvidenceRef string `json:"evidence_ref"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		got, err := a.Store.MarkOffboardingItem(r.Context(), eid, body.ItemID, ac.PrincipalID, body.Done, body.EvidenceRef)
+		if err != nil {
+			writeProblem(w, 422, "update_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "offboarding", ID: "*"}) {
+			return
+		}
+		eid := strings.TrimPrefix(path, "/offboarding/")
+		got, err := a.Store.GetOffboardingChecklist(r.Context(), eid)
+		if err != nil {
+			writeProblem(w, 404, "not_found", "checklist not found")
+			return
+		}
+		writeJSON(w, 200, got)
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "offboarding", ID: "*"}) {
+			return
+		}
+		var body struct {
+			EngagementID string `json:"engagement_id"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		got, err := a.Store.CreateOffboardingChecklist(r.Context(), body.EngagementID, ac.PrincipalID)
+		if err != nil {
+			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
+}
+
+func (a *App) handleLegalHolds(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.Contains(path, ":release") && r.Method == http.MethodPost {
+		if !a.authorize(w, ac, authz.ActionAdminAny, authz.Resource{Type: "legal_hold", ID: "*"}) {
+			return
+		}
+		id := extractID(path, "/legal-holds/", ":release")
+		if err := a.Store.ReleaseLegalHold(r.Context(), id, ac.PrincipalID); err != nil {
+			writeProblem(w, 422, "release_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "id": id})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !a.authorize(w, ac, authz.ActionAdminAny, authz.Resource{Type: "legal_hold", ID: "*"}) {
+		return
+	}
+	var body struct {
+		ObjectType string `json:"object_type"`
+		ObjectID   string `json:"object_id"`
+		Reason     string `json:"reason"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		writeProblem(w, 400, "bad_request", "invalid json")
+		return
+	}
+	got, err := a.Store.PlaceLegalHold(r.Context(), body.ObjectType, body.ObjectID, body.Reason, ac.PrincipalID)
+	if err != nil {
+		writeProblem(w, 422, "create_failed", err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]any{
+		"hold": got, "backup_retention_notice": store.BackupRetentionNotice(store.DefaultRetention()),
+	})
 }
 
 func (a *App) handleSuggestions(w http.ResponseWriter, r *http.Request, ac authz.Context) {
@@ -1030,10 +1352,46 @@ func (a *App) handleAgentREST(w http.ResponseWriter, r *http.Request, ac authz.C
 	if path == "/agent/tools" && r.Method == http.MethodGet {
 		gw := a.ensureGateway()
 		tools := gw.VisibleTools(ac)
-		writeJSON(w, 200, map[string]any{"items": tools, "note": "invoke via POST /mcp"})
+		writeJSON(w, 200, map[string]any{"items": tools, "note": "invoke via POST /agent/call or /mcp"})
 		return
 	}
-	writeProblem(w, 501, "not_implemented", "use /mcp via Agent Gateway")
+	if path == "/agent/call" && r.Method == http.MethodPost {
+		var body struct {
+			Tool      string          `json:"tool"`
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		name := body.Tool
+		if name == "" {
+			name = body.Name
+		}
+		if name == "" {
+			writeProblem(w, 400, "bad_request", "tool name required")
+			return
+		}
+		gw := a.ensureGateway()
+		delegator := ac
+		if ac.DelegatorID != "" {
+			delegator.PrincipalID = ac.DelegatorID
+			delegator.PrincipalType = authz.PrincipalWorkforce
+		}
+		res := gw.Call(r.Context(), ac, delegator, name, body.Arguments)
+		if !res.OK {
+			status := res.Status
+			if status == 0 {
+				status = 422
+			}
+			writeProblem(w, status, "agent_call_failed", res.Error)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "dry_run": res.DryRun, "result": json.RawMessage(res.Result)})
+		return
+	}
+	writeProblem(w, 405, "method_not_allowed", "method not allowed")
 }
 
 func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request, ac authz.Context) {

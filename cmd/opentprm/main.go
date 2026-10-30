@@ -16,12 +16,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
+
+	"filippo.io/age"
 
 	"github.com/TheScottle/OpenTPRM/internal/audit"
 	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
+	"github.com/TheScottle/OpenTPRM/internal/backup"
 	"github.com/TheScottle/OpenTPRM/internal/blob"
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
@@ -54,8 +58,10 @@ func main() {
 		err = cmdHealthcheck()
 	case "sandbox":
 		err = cmdSandbox(os.Args[2:])
-	case "backup", "restore":
-		err = fmt.Errorf("%s: implemented in M4 path; use development backup helper", os.Args[1])
+	case "backup":
+		err = cmdBackup(log, os.Args[2:])
+	case "restore":
+		err = cmdRestore(log, os.Args[2:])
 	case "version":
 		fmt.Println(version)
 	default:
@@ -313,6 +319,130 @@ func cmdAudit(log *slog.Logger, args []string) error {
 func cmdHealthcheck() error {
 	// Container HEALTHCHECK: process is up.
 	fmt.Println("ok")
+	return nil
+}
+
+func cmdBackup(log *slog.Logger, args []string) error {
+	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
+	cfgPath := fs.String("config", "/etc/opentprm/config.yaml", "config path")
+	dataDir := fs.String("data", "", "override data dir")
+	backupDir := fs.String("backup-dir", "", "override backup dir")
+	masterKey := fs.String("master-key", "", "master key file")
+	recipient := fs.String("recipient", "", "age recipient (age1...)")
+	identityOut := fs.String("write-identity", "", "optional path to write a new age identity when --recipient omitted")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg := config.Default()
+	if c, err := config.Load(*cfgPath); err == nil {
+		cfg = c
+	}
+	if *dataDir != "" {
+		cfg.Storage.DataDir = *dataDir
+	}
+	if *backupDir != "" {
+		cfg.Storage.BackupDir = *backupDir
+	}
+	keyFile := *masterKey
+	if keyFile == "" {
+		keyFile = cfg.Keys.MasterKeyFile
+	}
+	if keyFile == "" {
+		return fmt.Errorf("master key required (--master-key)")
+	}
+	kr := crypto.NewSealed()
+	if err := kr.UnsealFromFile(keyFile); err != nil {
+		return err
+	}
+	dbPath := filepath.Join(cfg.Storage.DataDir, "opentprm.db")
+	var recipients []age.Recipient
+	if *recipient != "" {
+		r, err := age.ParseX25519Recipient(*recipient)
+		if err != nil {
+			return err
+		}
+		recipients = append(recipients, r)
+	} else {
+		id, err := age.GenerateX25519Identity()
+		if err != nil {
+			return err
+		}
+		recipients = append(recipients, id.Recipient())
+		out := *identityOut
+		if out == "" {
+			out = filepath.Join(cfg.Storage.BackupDir, "custodian.agekey")
+		}
+		if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(out, []byte(id.String()+"\n"), 0o400); err != nil {
+			return err
+		}
+		log.Info("generated custodian age identity", "path", out, "recipient", id.Recipient().String())
+	}
+	m, err := backup.CreateOnlineSnapshot(dbPath, cfg.Storage.BackupDir, recipients, kr.SigningPriv)
+	if err != nil {
+		return err
+	}
+	log.Info("backup complete", "db_sha256", m.DBSHA256, "files", len(m.Files), "backup_dir", cfg.Storage.BackupDir)
+	return nil
+}
+
+func cmdRestore(log *slog.Logger, args []string) error {
+	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
+	cfgPath := fs.String("config", "/etc/opentprm/config.yaml", "config path")
+	backupDir := fs.String("backup-dir", "", "backup directory")
+	manifest := fs.String("manifest", "", "manifest path (default: newest)")
+	masterKey := fs.String("master-key", "", "master key file")
+	identityPath := fs.String("identity", "", "age identity file")
+	verifyOnly := fs.Bool("verify-only", false, "ARC-013 restore drill without writing live data")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if !*verifyOnly {
+		return fmt.Errorf("full restore not enabled in this build; use --verify-only for ARC-013 drills")
+	}
+	cfg := config.Default()
+	if c, err := config.Load(*cfgPath); err == nil {
+		cfg = c
+	}
+	if *backupDir != "" {
+		cfg.Storage.BackupDir = *backupDir
+	}
+	keyFile := *masterKey
+	if keyFile == "" {
+		keyFile = cfg.Keys.MasterKeyFile
+	}
+	if keyFile == "" {
+		return fmt.Errorf("master key required (--master-key)")
+	}
+	if *identityPath == "" {
+		return fmt.Errorf("--identity required for verify-only decrypt")
+	}
+	kr := crypto.NewSealed()
+	if err := kr.UnsealFromFile(keyFile); err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(*identityPath)
+	if err != nil {
+		return err
+	}
+	ids, err := age.ParseIdentities(strings.NewReader(string(raw)))
+	if err != nil || len(ids) == 0 {
+		return fmt.Errorf("parse age identity: %w", err)
+	}
+	manPath := *manifest
+	if manPath == "" {
+		manPath, err = backup.NewestManifest(cfg.Storage.BackupDir)
+		if err != nil {
+			return err
+		}
+	}
+	m, err := backup.VerifyDrill(manPath, cfg.Storage.BackupDir, kr.SigningPub, ids[0])
+	if err != nil {
+		return err
+	}
+	log.Info("restore verify-only ok", "manifest", manPath, "db_sha256", m.DBSHA256, "files", len(m.Files))
 	return nil
 }
 

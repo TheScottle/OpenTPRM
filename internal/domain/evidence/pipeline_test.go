@@ -9,6 +9,23 @@ import (
 	"testing"
 )
 
+// FuzzValidateUpload is a SEC-UP-002 stub; seeds live under testdata/fuzz/ValidateUpload.
+func FuzzValidateUpload(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte("%PDF-1.7\n"),
+		{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a},
+		[]byte("a,b\n1,2\n"),
+		[]byte(`{"a":1}`),
+		[]byte("PK\x03\x04"),
+		{},
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		_, _ = ValidateUpload(data)
+	})
+}
+
 func TestDetectMagicBytes(t *testing.T) {
 	cases := []struct {
 		name string
@@ -82,7 +99,7 @@ func TestHiddenInstructionMarkers(t *testing.T) {
 // TestAT_08_ArchiveBombRejectedAtValidation: archive declaring ~10GB uncompressed
 // is rejected at limits with no need to expand contents.
 func TestAT_08_ArchiveBombRejectedAtValidation(t *testing.T) {
-	data := craftZipWithDeclaredSize(10<<30) // 10 GiB declared uncompressed
+	data := craftZipWithDeclaredSize(10 << 30) // 10 GiB declared uncompressed
 	_, err := ValidateUpload(data)
 	if err == nil {
 		t.Fatal("expected rejection")

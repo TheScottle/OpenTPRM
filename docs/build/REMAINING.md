@@ -2,7 +2,7 @@
 
 Ordered by security-first milestone. Each slice lists concrete file targets and exit tests. Do not claim a milestone complete unless its exit gate truly passes.
 
-**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**; **instance/response/review/scoring store+HTTP + AT-15 delta HTTP E2E**. M3: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**; blob Get round-trip; sandbox path allow-list / empty-env; **Landlock/seccomp probe + child hooks (degraded OK in CI)**; **evidence page text storage + safe viewer stubs**; **SOC review JSON Schema (`api/schemas/soc-review-v1.json`)**. M5: Idempotency-Key middleware + vendor ETags; **store-backed findings/contracts/monitoring/suggestions/change-requests/agent-clients/models**; expanded OpenAPI; `/agent/tools` lists registry (`/agent/call` still 501 → MCP). oapi-codegen still open.
+**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; intake UI queues still open. M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**; **instance/response/review/scoring store+HTTP + AT-15 delta HTTP E2E**. M3: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**; blob Get round-trip; sandbox path allow-list / empty-env; **Landlock/seccomp probe + child hooks (degraded OK in CI)**; **evidence page text storage + safe viewer stubs**; **SOC review JSON Schema (`api/schemas/soc-review-v1.json`)**; **ValidateUpload fuzz stub + seed corpus**. M4: **finding status transitions + remediation plans**; **risk register persistence**; **contracts clause defaults + obligations/clients flow-down**; **monitoring dispositions**; **offboarding checklist**; **legal-hold + retention helpers (blocks shred)**; **`opentprm backup` / `restore --verify-only` (ARC-013)**; **`/agent/call` wired through Agent Gateway**. M5: Idempotency-Key middleware + vendor ETags; **store-backed findings/contracts/monitoring/suggestions/change-requests/agent-clients/models**; expanded OpenAPI. oapi-codegen still open.
 
 ## M0 — Secure skeleton (auth essentials still open)
 
@@ -55,35 +55,39 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M3 — Evidence sandbox
 
-**Done (partial):** magic/quarantine/AT-08 validation; detectors; **chunked upload sessions + complete → blob + quarantine**; blob Get round-trip; sandbox path allow-list + empty-env network forbid; **Landlock probe + ApplyChildHooks (degraded without ABI)**; **evidence_pages + SanitizeViewerText stubs**; **SOC review schema embed**.
+**Done (partial):** magic/quarantine/AT-08 validation; detectors; **chunked upload sessions + complete → blob + quarantine**; blob Get round-trip; sandbox path allow-list + empty-env network forbid; **Landlock probe + ApplyChildHooks (degraded without ABI)**; **evidence_pages + SanitizeViewerText stubs**; **SOC review schema embed**; **FuzzValidateUpload stub + `testdata/fuzz/ValidateUpload` seeds**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Chunked uploads | `store/uploads.go`, `/uploads` + `:complete` | `TestEVD_ChunkedUploadCompleteQuarantine` |
 | Landlock/seccomp + Wasm PDFium | `internal/sandbox/isolation_*.go`, `opentprm sandbox` | probe/hooks tests; real Wasm PDFium still open |
 | Blob round-trip + safe viewer | `internal/blob/` Get/Put; `evidence/viewer.go` + pages API | `TestBlobRoundTrip`; `TestSanitizeViewerText*`; page stubs |
-| SOC schemas + fuzz corpora | `api/schemas/soc-review-v1.json` | `TestSOCReviewSchemaEmbedded`; fuzz corpora still open |
+| SOC schemas + fuzz corpora | `api/schemas/soc-review-v1.json`; `FuzzValidateUpload` | `TestSOCReviewSchemaEmbedded`; fuzz stub present; expand corpora / CI fuzz job still open |
 
 ## M4 — Risk / contracts / ops
 
+**Done (partial):** finding transitions + remediation plans; risk register persist/list; clients/requirements flow-down → obligations; contract clause defaults; monitoring dispositions; offboarding checklist; legal holds + retention helpers (shred blocked); backup CLI + ARC-013 verify-only drill; `/agent/call` via gateway.
+
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Findings/remediation, risk register | store + handlers (findings create/list started in M5 slice) | FND/RSK tests |
-| Contracts/obligations/clients | migrations + API (contracts list/create store-backed) | CON tests |
-| Monitoring + offboarding | domain + API (signals list/create store-backed) | MON/OFF tests |
-| Reports/exports/markings | export pipeline | RPT + step-up for bulk |
-| Retention/legal hold + backup CLI | `internal/backup/`, `opentprm backup\|restore` | ARC/AT-14 + restore verify |
+| Findings/remediation, risk register | `domain/finding`, `store/risk_lifecycle.go`, handlers `:transition` / remediation / `/risk-register` | `TestFND_*`, `TestFND_RSK_*` |
+| Contracts/obligations/clients | `domain/contract`, obligations/clients APIs | `TestCON_*` |
+| Monitoring + offboarding | `domain/monitoring`, `domain/offboarding`, disposition + checklist APIs | `TestMON_*`, `TestOFF_*` |
+| Reports/exports/markings | export pipeline | RPT + step-up for bulk (**still open**) |
+| Retention/legal hold + backup CLI | `store/retention.go`, `internal/backup/`, `opentprm backup\|restore --verify-only` | `TestARC_002_*`, `TestARC_013_*`, AT-14 (hold-aware) |
+| Exceptions signed decisions | approve path signs payload | decision verify unit exists; full EXC register/UI still open |
+| Full restore write path | `opentprm restore` without `--verify-only` | still refused (verify-only only) |
 
 ## M5 — OpenAPI contract
 
-**Done (partial):** expanded OpenAPI catalog (instances, evidence pages/SOC, catalog POSTs); vendor ETags; Idempotency-Key middleware with replay header; **store-backed catalog handlers** (findings, contracts, monitoring, suggestions, change-requests, agent-clients, models/endpoints); `/agent/tools` returns registry.
+**Done (partial):** expanded OpenAPI catalog (instances, evidence pages/SOC, catalog POSTs, M4 risk/contracts/offboarding/legal-hold paths); vendor ETags; Idempotency-Key middleware with replay header; **store-backed catalog handlers**; `/agent/tools` + **`/agent/call` via gateway**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Complete OpenAPI §10.2 | `api/openapi.yaml` | schema lint (expanded; full §10.2 still open) |
 | oapi-codegen stubs | generated server types | compile |
 | ETags / Idempotency / cursors | middleware + store row_version | contract tests (idempotency covered in AT-01 HTTP) |
-| Replace empty/501 handlers | `handlers_domain.go` + `store/catalog.go` | catalog paths store-backed; `/agent/call` remains 501→MCP by design |
+| Replace empty/501 handlers | `handlers_domain.go` + `store/catalog.go` | catalog paths store-backed; `/agent/call` gateway-backed |
 
 ## M6 — OAuth AS + MCP
 

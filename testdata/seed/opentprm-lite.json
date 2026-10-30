@@ -29,6 +29,22 @@
           "domain": "RS",
           "mappings": [{"framework": "NIST-CSF-2.0", "control_id": "RS.MA-01"}],
           "license": "owner_authored"
+        },
+        {
+          "key": "LITE-SC-01",
+          "text": "Are subprocessors inventoried and contractually bound to equivalent security obligations?",
+          "type": "yes_no_na",
+          "domain": "GV.SC",
+          "mappings": [{"framework": "NIST-CSF-2.0", "control_id": "GV.SC-05"}],
+          "license": "owner_authored"
+        },
+        {
+          "key": "LITE-OFF-01",
+          "text": "Does the third party commit to data return or destruction with certification at offboarding?",
+          "type": "yes_no_na",
+          "domain": "GV.SC",
+          "mappings": [{"framework": "NIST-CSF-2.0", "control_id": "GV.SC-10"}],
+          "license": "owner_authored"
         }
       ]
     }

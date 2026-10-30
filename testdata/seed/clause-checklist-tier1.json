@@ -1,0 +1,27 @@
+{
+  "name": "Tier-1 clause checklist",
+  "kind": "contract_clause_checklist",
+  "semver": "1.0.0",
+  "provenance": {
+    "source": "Owner-authored for OpenTPRM CON-002",
+    "version": "1.0.0",
+    "license": "owner_authored"
+  },
+  "items": [
+    {"id": "security_exhibit", "label": "Security exhibit"},
+    {"id": "right_to_audit", "label": "Right to audit"},
+    {"id": "breach_notice_window", "label": "Breach-notice window"},
+    {"id": "data_location", "label": "Data location"},
+    {"id": "subprocessor_notice", "label": "Subprocessor notice/approval"},
+    {"id": "encryption", "label": "Encryption"},
+    {"id": "return_destruction", "label": "Return/destruction at exit"},
+    {"id": "termination_assistance", "label": "Termination assistance"},
+    {"id": "bcp", "label": "BCP/DR"},
+    {"id": "insurance", "label": "Insurance"},
+    {"id": "breach_indemnity", "label": "Breach indemnity and liability caps"},
+    {"id": "confidentiality_privilege", "label": "Confidentiality incl. privilege preservation"},
+    {"id": "no_training_on_firm_data", "label": "No training on firm data"},
+    {"id": "personnel_screening", "label": "Personnel screening"},
+    {"id": "client_ocg_compliance", "label": "Client OCG compliance"}
+  ]
+}

@@ -383,6 +383,33 @@ paths:
       operationId: createFinding
       responses:
         "201": { description: Created }
+  /findings/{id}:transition:
+    post:
+      tags: [findings]
+      summary: Transition finding status (FND-002)
+      operationId: transitionFinding
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+        "422": { description: Illegal transition }
+  /findings/{id}/remediation-plan:
+    get:
+      tags: [findings]
+      summary: Get remediation plan
+      operationId: getRemediationPlan
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    put:
+      tags: [findings]
+      summary: Upsert remediation plan
+      operationId: upsertRemediationPlan
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
   /risk/compute:
     post:
       tags: [risk]
@@ -397,6 +424,12 @@ paths:
       operationId: riskRegister
       responses:
         "200": { description: OK }
+    post:
+      tags: [risk]
+      summary: Persist residual risk result
+      operationId: persistRiskResult
+      responses:
+        "201": { description: Created }
   /exceptions/{id}:approve:
     post:
       tags: [exceptions]
@@ -420,6 +453,48 @@ paths:
       operationId: createContract
       responses:
         "201": { description: Created }
+  /obligations:
+    get:
+      tags: [contracts]
+      summary: List obligations
+      operationId: listObligations
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [contracts]
+      summary: Create obligation
+      operationId: createObligation
+      responses:
+        "201": { description: Created }
+  /clients:
+    post:
+      tags: [contracts]
+      summary: Create client
+      operationId: createClient
+      responses:
+        "201": { description: Created }
+  /clients/{id}/requirements:
+    post:
+      tags: [contracts]
+      summary: Create client requirement
+      operationId: createClientRequirement
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "201": { description: Created }
+  /clients/{id}/requirements/{rid}:flow-down:
+    post:
+      tags: [contracts]
+      summary: Flow client requirement to engagement obligation
+      operationId: flowDownRequirement
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - name: rid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201": { description: Created }
   /monitoring/signals:
     get:
       tags: [monitoring]
@@ -433,6 +508,56 @@ paths:
       operationId: createMonitoringSignal
       responses:
         "201": { description: Created }
+  /monitoring/signals/{id}:disposition:
+    post:
+      tags: [monitoring]
+      summary: Set analyst disposition (MON-005)
+      operationId: setMonitoringDisposition
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+  /offboarding:
+    post:
+      tags: [offboarding]
+      summary: Create offboarding checklist
+      operationId: createOffboardingChecklist
+      responses:
+        "201": { description: Created }
+  /offboarding/{id}:
+    get:
+      tags: [offboarding]
+      summary: Get offboarding checklist by engagement id
+      operationId: getOffboardingChecklist
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+  /offboarding/{id}/items:
+    post:
+      tags: [offboarding]
+      summary: Mark offboarding checklist item
+      operationId: markOffboardingItem
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+  /legal-holds:
+    post:
+      tags: [admin]
+      summary: Place legal hold
+      operationId: placeLegalHold
+      responses:
+        "201": { description: Created }
+  /legal-holds/{id}:release:
+    post:
+      tags: [admin]
+      summary: Release legal hold (second authorized user)
+      operationId: releaseLegalHold
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
   /suggestions:
     get:
       tags: [agents]
@@ -511,7 +636,9 @@ paths:
       summary: Invoke tool via Agent Gateway
       operationId: agentCall
       responses:
-        "501": { description: Use /mcp }
+        "200": { description: OK }
+        "403": { description: Forbidden }
+        "404": { description: Unknown tool }
   /audit/verify:
     post:
       tags: [audit]

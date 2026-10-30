@@ -52,14 +52,22 @@ func (a *App) routeAPIInner(w http.ResponseWriter, r *http.Request) {
 		a.handleEvidence(w, r, ac)
 	case path == "/findings" || strings.HasPrefix(path, "/findings"):
 		a.handleFindings(w, r, ac)
-	case strings.HasPrefix(path, "/risk"):
+	case path == "/risk-register" || strings.HasPrefix(path, "/risk"):
 		a.handleRisk(w, r, ac)
 	case path == "/exceptions" || strings.HasPrefix(path, "/exceptions"):
 		a.handleExceptions(w, r, ac)
 	case path == "/contracts" || strings.HasPrefix(path, "/contracts"):
 		a.handleContracts(w, r, ac)
+	case path == "/obligations" || strings.HasPrefix(path, "/obligations"):
+		a.handleObligations(w, r, ac)
+	case path == "/clients" || strings.HasPrefix(path, "/clients"):
+		a.handleClients(w, r, ac)
 	case path == "/monitoring/signals" || strings.HasPrefix(path, "/monitoring"):
 		a.handleMonitoring(w, r, ac)
+	case path == "/offboarding" || strings.HasPrefix(path, "/offboarding"):
+		a.handleOffboarding(w, r, ac)
+	case path == "/legal-holds" || strings.HasPrefix(path, "/legal-holds"):
+		a.handleLegalHolds(w, r, ac)
 	case path == "/suggestions" || strings.HasPrefix(path, "/suggestions"):
 		a.handleSuggestions(w, r, ac)
 	case path == "/change-requests" || strings.HasPrefix(path, "/change-requests"):

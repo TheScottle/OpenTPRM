@@ -631,6 +631,9 @@ func (s *Store) ShredVendor(ctx context.Context, vendorID, actor, policy string)
 	if _, err := RequireAuthz(ctx); err != nil {
 		return err
 	}
+	if err := s.CanShredObject(ctx, "third_party", vendorID); err != nil {
+		return err
+	}
 	now := nowUTC()
 	return s.WithWrite(func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM vendor_data_keys WHERE vendor_id=?`, vendorID); err != nil {
