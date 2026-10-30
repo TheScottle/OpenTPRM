@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
 )
 
@@ -24,8 +25,10 @@ func (a *App) routeAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id": ac.PrincipalID, "roles": ac.Roles, "type": ac.PrincipalType,
 		})
-	case path == "/vendors" || strings.HasPrefix(path, "/vendors/"):
+	case path == "/vendors" || path == "/vendors:import" || strings.HasPrefix(path, "/vendors/"):
 		a.handleVendors(w, r, ac)
+	case path == "/fourth-party-links" || strings.HasPrefix(path, "/fourth-party-links"):
+		a.handleFourthPartyLinks(w, r, ac)
 	case path == "/intakes" || strings.HasPrefix(path, "/intakes/"):
 		a.handleIntakes(w, r, ac)
 	case path == "/assessments" || strings.HasPrefix(path, "/assessments/"):
@@ -66,8 +69,39 @@ func (a *App) routeAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) authContext(r *http.Request) authz.Context {
-	// Development bootstrap: X-OpenTPRM-User / X-OpenTPRM-Roles headers when no session.
-	// Production uses cookie sessions / DPoP (wired in authn package).
+	traceID := r.Header.Get("X-Request-Id")
+
+	// Prefer server-side session cookie (SEC-AN-004).
+	if a.Sessions != nil {
+		if c, err := r.Cookie(authn.SessionCookie); err == nil && c.Value != "" {
+			if sess, err := a.Sessions.LookupByID(r.Context(), c.Value); err == nil {
+				_ = a.Sessions.Touch(r.Context(), sess.IDHash)
+				bg := false
+				if a.BreakGlass != nil {
+					bg = a.BreakGlass.Active(sess.UserID, sess.LastSeen)
+				}
+				return authz.Context{
+					PrincipalID:   sess.UserID,
+					PrincipalType: authz.PrincipalWorkforce,
+					Roles:         sess.Roles,
+					AAL:           sess.AAL,
+					SessionID:     sess.IDHash,
+					BreakGlass:    bg,
+					StepUpAt:      sess.StepUpAt,
+					IP:            r.RemoteAddr,
+					TraceID:       traceID,
+				}
+			}
+		}
+	}
+
+	// Development bootstrap headers — refused when AllowDevHeaders is false (production).
+	if !a.AllowDevHeaders {
+		return authz.Context{
+			PrincipalID: "anonymous", PrincipalType: authz.PrincipalWorkforce,
+			IP: r.RemoteAddr, TraceID: traceID,
+		}
+	}
 	uid := r.Header.Get("X-OpenTPRM-User")
 	if uid == "" {
 		uid = "anonymous"
@@ -89,13 +123,8 @@ func (a *App) authContext(r *http.Request) authz.Context {
 		Scopes:        strings.Split(strings.TrimSpace(r.Header.Get("X-OpenTPRM-Scopes")), " "),
 		AAL:           2,
 		IP:            r.RemoteAddr,
-		TraceID:       r.Header.Get("X-Request-Id"),
+		TraceID:       traceID,
 	}
-}
-
-func (a *App) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(openAPIDocument)
 }
 
 func (a *App) handleAuditVerify(w http.ResponseWriter, r *http.Request) {

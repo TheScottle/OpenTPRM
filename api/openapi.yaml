@@ -2,71 +2,323 @@ openapi: 3.1.0
 info:
   title: OpenTPRM API
   version: 1.0.0
-  description: Self-hosted third-party risk management REST API.
+  description: Self-hosted third-party risk management REST API (§10).
 servers:
   - url: /api/v1
+tags:
+  - name: vendors
+  - name: intakes
+  - name: assessments
+  - name: questionnaires
+  - name: evidence
+  - name: findings
+  - name: risk
+  - name: exceptions
+  - name: contracts
+  - name: monitoring
+  - name: agents
+  - name: admin
+  - name: audit
 paths:
+  /me:
+    get:
+      summary: Current principal profile
+      operationId: getMe
+      responses:
+        "200": { description: OK }
   /vendors:
     get:
+      tags: [vendors]
       summary: List vendors
       operationId: listVendors
       responses:
-        "200":
-          description: OK
+        "200": { description: OK }
     post:
+      tags: [vendors]
       summary: Create vendor
       operationId: createVendor
       responses:
-        "201":
-          description: Created
+        "201": { description: Created }
+  /vendors/{id}:
+    get:
+      tags: [vendors]
+      summary: Get vendor
+      operationId: getVendor
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+        "404": { description: Not found }
+    put:
+      tags: [vendors]
+      summary: Update vendor
+      operationId: updateVendor
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+        "412": { description: Precondition failed }
+  /vendors/{id}:merge:
+    post:
+      tags: [vendors]
+      summary: Merge source vendor into this vendor
+      operationId: mergeVendor
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: Merged }
+  /vendors/{id}/history:
+    get:
+      tags: [vendors]
+      summary: Vendor change history
+      operationId: vendorHistory
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+  /vendors/{id}/contacts:
+    get:
+      tags: [vendors]
+      summary: List vendor contacts
+      operationId: listContacts
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [vendors]
+      summary: Create vendor contact
+      operationId: createContact
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "201": { description: Created }
+  /vendors/{id}/engagements:
+    get:
+      tags: [vendors]
+      summary: List engagements
+      operationId: listEngagements
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [vendors]
+      summary: Create engagement
+      operationId: createEngagement
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "201": { description: Created }
+  /vendors:import:
+    post:
+      tags: [vendors]
+      summary: Bulk-import vendors from CSV
+      operationId: importVendors
+      responses:
+        "200": { description: Row-level report }
+  /fourth-party-links:
+    get:
+      tags: [vendors]
+      summary: List fourth-party links
+      operationId: listFourthPartyLinks
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [vendors]
+      summary: Create fourth-party link
+      operationId: createFourthPartyLink
+      responses:
+        "201": { description: Created }
+  /intakes:
+    post:
+      tags: [intakes]
+      summary: Create intake
+      operationId: createIntake
+      responses:
+        "201": { description: Created }
   /intakes/{id}:submit:
     post:
+      tags: [intakes]
       summary: Submit intake and compute inherent-risk tier
       operationId: submitIntake
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/ID"
       responses:
-        "200":
-          description: Tier and diligence plan
+        "200": { description: Tier and diligence plan }
+  /assessments:
+    get:
+      tags: [assessments]
+      summary: List assessments
+      operationId: listAssessments
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [assessments]
+      summary: Create assessment
+      operationId: createAssessment
+      responses:
+        "201": { description: Created }
   /assessments/{id}:transition:
     post:
+      tags: [assessments]
       summary: Transition assessment state machine
       operationId: transitionAssessment
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/ID"
       responses:
-        "200":
-          description: Updated
-        "422":
-          description: Illegal transition
+        "200": { description: Updated }
+        "422": { description: Illegal transition }
+  /questionnaire-templates:
+    get:
+      tags: [questionnaires]
+      summary: List questionnaire templates
+      operationId: listQuestionnaireTemplates
+      responses:
+        "200": { description: OK }
+  /questionnaire-instances:
+    get:
+      tags: [questionnaires]
+      summary: List questionnaire instances
+      operationId: listQuestionnaireInstances
+      responses:
+        "200": { description: OK }
   /uploads:
     post:
+      tags: [evidence]
       summary: Upload evidence bytes (quarantine pipeline)
       operationId: upload
       responses:
-        "202":
-          description: Accepted
-        "422":
-          description: Rejected
-  /audit/verify:
-    post:
-      summary: Verify audit hash chain
-      operationId: auditVerify
+        "202": { description: Accepted }
+        "422": { description: Rejected }
+  /evidence:
+    get:
+      tags: [evidence]
+      summary: List evidence metadata
+      operationId: listEvidence
       responses:
-        "200":
-          description: OK
-        "409":
-          description: Chain broken
+        "200": { description: OK }
+  /findings:
+    get:
+      tags: [findings]
+      summary: List findings
+      operationId: listFindings
+      responses:
+        "200": { description: OK }
+  /risk/compute:
+    post:
+      tags: [risk]
+      summary: Compute residual risk
+      operationId: computeRisk
+      responses:
+        "200": { description: OK }
+  /risk-register:
+    get:
+      tags: [risk]
+      summary: Risk register view
+      operationId: riskRegister
+      responses:
+        "200": { description: OK }
+  /exceptions/{id}:approve:
+    post:
+      tags: [exceptions]
+      summary: Approve exception (humans only, step-up)
+      operationId: approveException
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: Signed decision }
+        "403": { description: Forbidden }
+  /contracts:
+    get:
+      tags: [contracts]
+      summary: List contracts
+      operationId: listContracts
+      responses:
+        "200": { description: OK }
+  /monitoring/signals:
+    get:
+      tags: [monitoring]
+      summary: List monitoring signals
+      operationId: listMonitoringSignals
+      responses:
+        "200": { description: OK }
+  /suggestions:
+    get:
+      tags: [agents]
+      summary: List AI suggestions
+      operationId: listSuggestions
+      responses:
+        "200": { description: OK }
+  /change-requests:
+    get:
+      tags: [agents]
+      summary: List change requests
+      operationId: listChangeRequests
+      responses:
+        "200": { description: OK }
+  /agent-clients:
+    get:
+      tags: [agents]
+      summary: List agent clients (Security Administrator)
+      operationId: listAgentClients
+      responses:
+        "200": { description: OK }
+  /model-endpoints:
+    get:
+      tags: [agents]
+      summary: List model endpoints
+      operationId: listModelEndpoints
+      responses:
+        "200": { description: OK }
+  /models:
+    get:
+      tags: [agents]
+      summary: List models
+      operationId: listModels
+      responses:
+        "200": { description: OK }
   /agent/tools:
     get:
+      tags: [agents]
       summary: Agent tool registry (OpenAI function format)
       operationId: agentTools
       responses:
-        "200":
-          description: OK
+        "200": { description: OK }
+  /agent/call:
+    post:
+      tags: [agents]
+      summary: Invoke tool via Agent Gateway
+      operationId: agentCall
+      responses:
+        "501": { description: Use /mcp }
+  /audit/verify:
+    post:
+      tags: [audit]
+      summary: Verify audit hash chain
+      operationId: auditVerify
+      responses:
+        "200": { description: OK }
+        "409": { description: Chain broken }
+  /admin/settings:
+    get:
+      tags: [admin]
+      summary: Admin settings
+      operationId: adminSettings
+      responses:
+        "200": { description: OK }
+components:
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-otp_s
+    dpop:
+      type: http
+      scheme: DPoP

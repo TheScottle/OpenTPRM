@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/TheScottle/OpenTPRM/internal/audit"
+	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
@@ -27,6 +29,11 @@ type App struct {
 	PDP     *authz.PDP
 	GW      *gateway.Gateway
 	Log     *slog.Logger
+	Sessions *authn.SessionStore
+	Challenges *authn.ChallengeStore
+	BreakGlass *authn.BreakGlassRegistry
+	// AllowDevHeaders permits X-OpenTPRM-* bootstrap auth outside production.
+	AllowDevHeaders bool
 
 	// SealedMode is true when master key is unavailable (AT-10).
 	SealedMode bool
@@ -97,6 +104,28 @@ func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
 			}
 			writeProblem(w, http.StatusServiceUnavailable, "sealed", "system is sealed; unseal required")
 			return
+		}
+
+		// CSRF + Origin checks for cookie sessions on state-changing methods (SEC-WEB / SEC-AZ-001).
+		if a.Sessions != nil && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			host := r.Host
+			if i := strings.IndexByte(host, ':'); i >= 0 {
+				host = host[:i]
+			}
+			if authn.CheckOriginRejectsCrossSite(r, host) {
+				writeProblem(w, http.StatusForbidden, "csrf", "cross-site request rejected")
+				return
+			}
+			if c, err := r.Cookie(authn.SessionCookie); err == nil && c.Value != "" {
+				sess, err := a.Sessions.LookupByID(r.Context(), c.Value)
+				if err == nil {
+					token := r.Header.Get(authn.CSRFHeader)
+					if err := authn.ValidateCSRF(sess, token); err != nil {
+						writeProblem(w, http.StatusForbidden, "csrf", "csrf validation failed")
+						return
+					}
+				}
+			}
 		}
 		next(w, r)
 	}

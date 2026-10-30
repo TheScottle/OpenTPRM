@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/TheScottle/OpenTPRM/internal/audit"
+	"github.com/TheScottle/OpenTPRM/internal/authn"
 	"github.com/TheScottle/OpenTPRM/internal/authz"
 	"github.com/TheScottle/OpenTPRM/internal/config"
 	"github.com/TheScottle/OpenTPRM/internal/crypto"
@@ -132,14 +133,22 @@ func cmdServe(log *slog.Logger, args []string) error {
 		return fmt.Errorf("cedar: %w", err)
 	}
 
+	var sessions *authn.SessionStore
+	if stStore != nil {
+		sessions = authn.NewSessionStore(stStore.DB())
+	}
 	app := &httpserver.App{
-		Cfg:        cfg,
-		Keyring:    keyring,
-		Store:      stStore,
-		Audit:      auditLog,
-		PDP:        pdp,
-		Log:        log,
-		SealedMode: sealed,
+		Cfg:             cfg,
+		Keyring:         keyring,
+		Store:           stStore,
+		Audit:           auditLog,
+		PDP:             pdp,
+		Log:             log,
+		SealedMode:      sealed,
+		Sessions:        sessions,
+		Challenges:      authn.NewChallengeStore(),
+		BreakGlass:      authn.NewBreakGlassRegistry(),
+		AllowDevHeaders: cfg.Mode != config.ModeProduction,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -180,9 +189,18 @@ func cmdInit(log *slog.Logger, args []string) error {
 	if err != nil {
 		return err
 	}
+	tokenHex := hex.EncodeToString(token)
 	tokenPath := filepath.Join(*dataDir, "bootstrap.token")
-	if err := os.WriteFile(tokenPath, []byte(hex.EncodeToString(token)), 0o400); err != nil {
+	if err := os.WriteFile(tokenPath, []byte(tokenHex), 0o400); err != nil {
 		return err
+	}
+	// Register hashed bootstrap token in DB when master key is available (OPS-003).
+	kr := crypto.NewSealed()
+	if err := kr.UnsealFromFile(*outKey); err == nil {
+		if st, err := store.Open(*dataDir, kr); err == nil {
+			_ = authn.RegisterBootstrapToken(context.Background(), st.DB(), tokenHex, time.Now().UTC())
+			_ = st.Close()
+		}
 	}
 	log.Info("initialized", "master_key", *outKey, "tls_fingerprint", fp, "bootstrap_token", tokenPath, "bootstrap_ttl", "1h")
 	return nil

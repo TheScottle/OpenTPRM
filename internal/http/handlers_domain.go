@@ -17,42 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func (a *App) handleVendors(w http.ResponseWriter, r *http.Request, ac authz.Context) {
-	res := authz.Resource{Type: "vendor", ID: "*"}
-	action := authz.ActionVendorRead
-	if r.Method != http.MethodGet {
-		action = authz.ActionVendorWrite
-	}
-	if !a.authorize(w, ac, action, res) {
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		items, err := a.Store.ListVendors(r.Context())
-		if err != nil {
-			writeProblem(w, 500, "error", "list failed")
-			return
-		}
-		writeJSON(w, 200, map[string]any{"items": items})
-	case http.MethodPost:
-		var body store.Vendor
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
-			writeProblem(w, 400, "bad_request", "invalid json")
-			return
-		}
-		body.ID = uuid.Must(uuid.NewV7()).String()
-		body.CreatedBy = ac.PrincipalID
-		body.UpdatedBy = ac.PrincipalID
-		if err := a.Store.CreateVendor(r.Context(), body); err != nil {
-			writeProblem(w, 500, "error", "create failed")
-			return
-		}
-		writeJSON(w, 201, body)
-	default:
-		writeProblem(w, 405, "method_not_allowed", "method not allowed")
-	}
-}
-
 func (a *App) handleIntakes(w http.ResponseWriter, r *http.Request, ac authz.Context) {
 	if strings.HasSuffix(r.URL.Path, ":submit") && r.Method == http.MethodPost {
 		id := extractID(r.URL.Path, "/api/v1/intakes/", ":submit")

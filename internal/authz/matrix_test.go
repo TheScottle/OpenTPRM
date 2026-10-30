@@ -31,9 +31,34 @@ func TestAuthorizationMatrixHarness(t *testing.T) {
 			action: authz.ActionVendorRead, res: authz.Resource{Type: "vendor", ID: "v1"}, allow: true,
 		},
 		{
+			name: "analyst_writes_vendor",
+			ac: authz.Context{PrincipalID: "a1", PrincipalType: authz.PrincipalWorkforce, Roles: []string{"risk_analyst"}, AAL: 2},
+			action: authz.ActionVendorWrite, res: authz.Resource{Type: "vendor", ID: "v1"}, allow: true,
+		},
+		{
+			name: "analyst_engagement_write",
+			ac: authz.Context{PrincipalID: "a1", PrincipalType: authz.PrincipalWorkforce, Roles: []string{"risk_analyst"}, AAL: 2},
+			action: authz.ActionEngagementWrite, res: authz.Resource{Type: "engagement", ID: "e1"}, allow: true,
+		},
+		{
+			name: "analyst_intake_submit",
+			ac: authz.Context{PrincipalID: "a1", PrincipalType: authz.PrincipalWorkforce, Roles: []string{"risk_analyst"}, AAL: 2},
+			action: authz.ActionIntakeSubmit, res: authz.Resource{Type: "intake", ID: "i1"}, allow: true,
+		},
+		{
+			name: "analyst_assessment_transition",
+			ac: authz.Context{PrincipalID: "a1", PrincipalType: authz.PrincipalWorkforce, Roles: []string{"risk_analyst"}, AAL: 2},
+			action: authz.ActionAssessmentTransition, res: authz.Resource{Type: "assessment", ID: "as1"}, allow: true,
+		},
+		{
 			name: "agent_cannot_approve",
 			ac: authz.Context{PrincipalID: "ag1", PrincipalType: authz.PrincipalAgent, Roles: []string{}, Scopes: []string{"tprm.read", "tprm.change.request"}, AAL: 2},
 			action: authz.ActionRiskApprove, res: authz.Resource{Type: "risk", ID: "r1"}, allow: false,
+		},
+		{
+			name: "agent_reads_with_scope",
+			ac: authz.Context{PrincipalID: "ag1", PrincipalType: authz.PrincipalAgent, Scopes: []string{"tprm.read"}, AAL: 2},
+			action: authz.ActionVendorRead, res: authz.Resource{Type: "vendor", ID: "v1"}, allow: true,
 		},
 		{
 			name: "restricted_denies_non_allowlist",
@@ -44,6 +69,11 @@ func TestAuthorizationMatrixHarness(t *testing.T) {
 			name: "viewer_cannot_write",
 			ac: authz.Context{PrincipalID: "v", PrincipalType: authz.PrincipalWorkforce, Roles: []string{"viewer"}, AAL: 2},
 			action: authz.ActionVendorWrite, res: authz.Resource{Type: "vendor", ID: "v1"}, allow: false,
+		},
+		{
+			name: "approver_can_approve",
+			ac: authz.Context{PrincipalID: "ap", PrincipalType: authz.PrincipalWorkforce, Roles: []string{"approver"}, AAL: 2},
+			action: authz.ActionExceptionApprove, res: authz.Resource{Type: "exception", ID: "x1"}, allow: true,
 		},
 	}
 	for _, r := range rows {
