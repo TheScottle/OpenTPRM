@@ -42,3 +42,23 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ```
 
 Omit `--load` and use `--push` when publishing to a registry. See `docs/build/SLSA-PROVENANCE.md` for SBOM + unsigned provenance stubs (`make sbom`, `make provenance-stub`) and the cosign verify placeholder (`make cosign-verify` / `scripts/cosign-verify.sh`).
+
+## Unraid
+
+Unraid uses host path mounts under `/mnt/user/appdata/opentprm/` instead of named Docker volumes. Secrets are still files (mounted at `/run/secrets/...`); never Unraid Variables for keys (OPS-002).
+
+1. On the Unraid host, build locally (preferred when no registry is configured):
+
+   ```bash
+   docker build -t opentprm:local -f deploy/Dockerfile .
+   ```
+
+2. Bootstrap once with `bash deploy/unraid/install.sh`, or a one-shot `opentprm init` container writing into appdata `data/` and `secrets/`. Tighten `master.key` and `tls.key` to mode `0400`.
+
+3. Deploy via Community Applications / Docker UI using `deploy/unraid/opentprm.xml`, or Compose Manager with `deploy/unraid/docker-compose.unraid.yml`.
+
+4. Network: Bridge. Port: `8443`. Privileged: OFF. Extra params include `--read-only`, `--cap-drop=ALL`, `--security-opt no-new-privileges`, and tmpfs `/tmp`. The process runs as UID/GID **65532** (not PUID/PGID).
+
+5. WebUI: `https://[IP]:8443`. Portal stays off by default.
+
+Full steps: [`deploy/unraid/README-UNRAID.md`](../../deploy/unraid/README-UNRAID.md).

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>opentprm</Name>
+  <Repository>opentprm:local</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/TheScottle/OpenTPRM</Support>
+  <Project>https://github.com/TheScottle/OpenTPRM</Project>
+  <Overview>
+    OpenTPRM — self-hosted Third-Party Risk Management. Build the image on the Unraid host first: docker build -t opentprm:local -f deploy/Dockerfile . from a clone of the repo. Secrets MUST be host files under appdata (mode 0400); never Unraid Variables for keys or certs (OPS-002).
+  </Overview>
+  <Category>Security: Tools:Utilities</Category>
+  <WebUI>https://[IP]:[PORT:8443]/</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams>--read-only --cap-drop=ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m --init --user 65532:65532 --pids-limit 256</ExtraParams>
+  <PostArgs>serve --config /etc/opentprm/config.yaml</PostArgs>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Build image as opentprm:local before starting. Run install.sh (or opentprm init) once to create secrets and data dirs. App UID/GID is fixed at 65532 (distroless nonroot); chown appdata accordingly — PUID/PGID Variables are not used.</Requires>
+
+  <Config Name="WebUI HTTPS" Target="8443" Default="8443" Mode="tcp" Description="Listener A (internal TPRM UI / API / MCP)" Type="Port" Display="always" Required="true" Mask="false">8443</Config>
+
+  <Config Name="App Data" Target="/data" Default="/mnt/user/appdata/opentprm/data" Mode="rw" Description="Encrypted application data volume" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/opentprm/data</Config>
+  <Config Name="Backup" Target="/backup" Default="/mnt/user/appdata/opentprm/backup" Mode="rw" Description="Online backup snapshots" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/opentprm/backup</Config>
+  <Config Name="Config File" Target="/etc/opentprm/config.yaml" Default="/mnt/user/appdata/opentprm/config/config.yaml" Mode="ro" Description="Production config (copy from config.unraid.yaml)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/opentprm/config/config.yaml</Config>
+
+  <Config Name="Master Key" Target="/run/secrets/opentprm_master_key" Default="/mnt/user/appdata/opentprm/secrets/master.key" Mode="ro" Description="Master key file (mode 0400). Never use a Variable for this secret." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/opentprm/secrets/master.key</Config>
+  <Config Name="TLS Certificate" Target="/run/secrets/opentprm_tls_cert" Default="/mnt/user/appdata/opentprm/secrets/tls.crt" Mode="ro" Description="TLS certificate file" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/opentprm/secrets/tls.crt</Config>
+  <Config Name="TLS Private Key" Target="/run/secrets/opentprm_tls_key" Default="/mnt/user/appdata/opentprm/secrets/tls.key" Mode="ro" Description="TLS private key file (mode 0400). Never use a Variable for this secret." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/opentprm/secrets/tls.key</Config>
+
+  <Config Name="Mode" Target="OPENTPRM_MODE" Default="production" Mode="" Description="Runtime mode (not a secret)" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
+</Container>

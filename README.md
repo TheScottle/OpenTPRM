@@ -16,6 +16,11 @@ go build -o opentprm ./cmd/opentprm
 ./opentprm init --data ./data --master-key ./secrets/master.key --tls-dir ./secrets
 ```
 
+## Deploy
+
+- Docker Compose (generic): [`deploy/compose.yaml`](deploy/compose.yaml)
+- **Unraid**: step-by-step guide, CA template, and appdata helper in [`deploy/unraid/README-UNRAID.md`](deploy/unraid/README-UNRAID.md)
+
 ## License
 
 Unlicense (public domain). Seed content is Owner-authored and mapped only to free NIST sources — no paid questionnaire standards are bundled.

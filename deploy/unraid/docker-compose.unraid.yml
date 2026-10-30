@@ -1,0 +1,54 @@
+# OpenTPRM on Unraid — Docker Compose Manager / CLI
+#
+# Appdata layout (host):
+#   /mnt/user/appdata/opentprm/data
+#   /mnt/user/appdata/opentprm/backup
+#   /mnt/user/appdata/opentprm/config/config.yaml
+#   /mnt/user/appdata/opentprm/secrets/{master.key,tls.crt,tls.key}  (mode 0400)
+#
+# Secrets are bind-mounted into /run/secrets/* (Docker secrets pattern approximated
+# with host paths). NEVER put master keys or TLS private keys in Unraid Variables.
+#
+# Build once on the Unraid host (no public registry required):
+#   cd /path/to/OpenTPRM
+#   docker build -t opentprm:local -f deploy/Dockerfile .
+#
+# First-run bootstrap: see README-UNRAID.md or install.sh
+
+services:
+  opentprm:
+    image: opentprm:local
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    container_name: opentprm
+    init: true
+    user: "65532:65532"
+    read_only: true
+    privileged: false
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    network_mode: bridge
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m
+    volumes:
+      - /mnt/user/appdata/opentprm/data:/data
+      - /mnt/user/appdata/opentprm/backup:/backup
+      - /mnt/user/appdata/opentprm/config/config.yaml:/etc/opentprm/config.yaml:ro
+      # Host-file secrets → container secret paths (OPS-002 compliant)
+      - /mnt/user/appdata/opentprm/secrets/master.key:/run/secrets/opentprm_master_key:ro
+      - /mnt/user/appdata/opentprm/secrets/tls.crt:/run/secrets/opentprm_tls_cert:ro
+      - /mnt/user/appdata/opentprm/secrets/tls.key:/run/secrets/opentprm_tls_key:ro
+    ports:
+      - "8443:8443"
+    environment:
+      OPENTPRM_MODE: production
+      # Do NOT set OPENTPRM_MASTER_KEY, OPENTPRM_TLS_KEY, or OPENTPRM_OIDC_SECRET
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 2.0
+    ulimits:
+      nofile: { soft: 8192, hard: 8192 }
+      core: 0
+    restart: unless-stopped
