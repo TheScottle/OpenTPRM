@@ -2,11 +2,11 @@
 
 Ordered by security-first milestone. Each slice lists concrete file targets and exit tests. Do not claim a milestone complete unless its exit gate truly passes.
 
-**Progress snapshot (this branch):** M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, and `identity.allow_dev_headers`. M1 inventory covers INV-001–009 (tags + typed custom fields, next-action-due from renewal/reassessment/evidence/remediation) with HTTP AT-01 intake submit E2E and expanded SEC-AZ-004 matrix for M1 routes; **intake analyst queue HTML** (`/intakes`). M2: template/version/publish + Core/Lite/Intake seeds; **signed offline zip packages (AT-07 round-trip)**; **OSCAL catalog → skeleton + CSV/XLSX column-mapping imports**; **QST-011 archive/formula limits**; **instance/response/review/scoring store+HTTP + AT-15 delta HTTP E2E**. M3: **chunked upload sessions + `:complete` → encrypted blob + quarantine evidence**; blob Get round-trip; sandbox path allow-list / empty-env; **Landlock/seccomp probe + child hooks (degraded OK in CI)**; **evidence page text storage + safe viewer stubs**; **SOC review JSON Schema (`api/schemas/soc-review-v1.json`)**; **ValidateUpload fuzz stub + seed corpus**. M4: **finding status transitions + remediation plans**; **risk register persistence**; **contracts clause defaults + obligations/clients flow-down**; **monitoring dispositions**; **offboarding checklist**; **legal-hold + retention helpers (blocks shred)**; **`opentprm backup` / `restore --verify-only` (ARC-013)**; **`/agent/call` wired through Agent Gateway**; **exceptions create/list + SOD-2 approve with signed decision**; **reports/exports with GEN-012 markings + sensitive step-up**. M5: Idempotency-Key middleware + vendor ETags; **store-backed findings/contracts/monitoring/suggestions/change-requests/agent-clients/models**; expanded OpenAPI (exceptions/reports/exports). oapi-codegen still open. M6: **opaque hashed OAuth access tokens**; **PKCE S256 + auth-code issue/consume**; **DPoP proof parse/verify**; **`/oauth/authorize` + authorization_code / client_credentials / refresh_token grants**; **refresh rotate + reuse detect**; **mTLS client-cred stub (RFC 8705)**; **MCP initialize/discover + Tasks stubs + conformance-oriented tests**; **gateway budgets (AI-032)**; **change-request approval HTML UI (step-up)**; **AT-06 stale ETag + SOD dual-control on decide**. M7: **model-endpoint HTTP CRUD**; **AI job stub + ai_call_logs writes**; **evals harness with AT-04 injection-obedience zero tolerance**; **suggestion `:accept` with citation verify (AI-064)**. M8: **portal listener wiring**; **magic-link issue/consume stub**; **vendor questionnaire list scoped by vendor_id**. M9: **analyst home + vendors + intakes + change-requests UI**; **CycloneDX SBOM + gosec CI**; **SLSA provenance stub docs/Makefile**; **multi-arch buildx note**; **cosign verify script placeholder**.
+**Progress snapshot (this branch):** M0–M9 foundation from prior landings, plus harden slice: **sandbox child policy + PDFium-free TXT/JSON extract**; **evidence page HTML viewer**; **answer library store+HTTP (QST-035)**; **export second-approver + committee stub (RPT-004)**; **portal passkey enroll + TOTP enroll/verify stubs (POR-002)**; **OpenAPI path expansion + mux registration contract smoke** (oapi-codegen still open); **NFR-001 httptest `/health/ready` p95 smoke**; **OPS-004 demo seed refused in production**. M0 auth packages include session/CSRF/OIDC/bootstrap/break-glass plus a limited WebAuthn enroll/login/step-up path (Ed25519 challenge signing; full WebAuthn attestation still open). Production refuses TLS-less boot, missing master key, `identity.allow_dev_headers`, and `TPRM_SEED_DEMO` in production. M1 inventory INV-001–009 + intake queue UI. M2: templates/offline/OSCAL/CSV + instances/delta + **answer library**. M3: chunked uploads, Landlock/seccomp child hooks, **TXT/JSON extract**, **HTML+JSON safe viewer**, SOC schema, fuzz stub. M4: findings/risk/contracts/monitoring/offboarding/legal-hold/backup + exceptions + **reports/exports with step-up + second approver**. M5: Idempotency/ETags + expanded OpenAPI + **route contract smoke**. M6–M7 OAuth/MCP/AI/evals as before. M8: portal magic-link + **passkey/TOTP stubs**. M9: analyst UI + SBOM/gosec/SLSA stubs + **ready latency smoke**.
 
 ## M0 — Secure skeleton (auth essentials still open)
 
-**Done (foundation):** sealed start + keyring, TLS listeners, Cedar PDP, hash-chained audit, Dockerfile/compose scaffold, AT-10/AT-11/SEC-CTN-006/SEC-AZ-004 harnesses; session/CSRF/OIDC-claim/bootstrap/break-glass unit layers; limited WebAuthn enroll/login/step-up; production config refusals (TLS, master key, allow_dev_headers).
+**Done (foundation):** sealed start + keyring, TLS listeners, Cedar PDP, hash-chained audit, Dockerfile/compose scaffold, AT-10/AT-11/SEC-CTN-006/SEC-AZ-004 harnesses; session/CSRF/OIDC-claim/bootstrap/break-glass unit layers; limited WebAuthn enroll/login/step-up; production config refusals (TLS, master key, allow_dev_headers); **OPS-004 demo seed refuse**.
 
 | Slice | File targets | Exit tests |
 | --- | --- | --- |
@@ -17,6 +17,7 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 | OIDC SSO client | `internal/authn/oidc.go`; config under `deploy/config.example.yaml` | `TestSEC_AN_001_*` (nonce/iss/aud validation unit) |
 | Authz context from session | Replace sole reliance on `X-OpenTPRM-*` in `routes.go` with cookie session → `authz.Context` (dev headers only behind non-prod flag) | `TestSEC_AZ_001_MiddlewareOrder_*`, `TestSEC_AZ_001_ProductionDevHeadersRefused` |
 | Production insecure refuse | `internal/config/config.go` Validate | `TestOPS_001_ProductionRefusesInsecure` |
+| Demo seed refuse (OPS-004) | `internal/seed/demo.go`, `cmd/opentprm` serve | `TestOPS_004_DemoSeedRefusedInProduction` |
 | SEC-SC-006 CI | `.github/workflows/ci.yml` SBOM/govulncheck/license allow-list | CI job green on PR |
 
 **Not claimed complete until:** full WebAuthn attestation/CTAP enroll UI, OIDC against Keycloak fixture, CSRF on every mutating cookie route, full SC-006 gate.
@@ -51,7 +52,7 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 | Offline packages | `offline.go` PackZip/UnpackZip | `TestOfflineZipRoundTripAndLockedCell`, `TestAT_07_*` |
 | QST-011 limits | `limits.go` + import path | `TestQST_011_*` |
 | Instances/responses/review/scoring API | `store/instances.go` + handlers | `TestQST_InstanceResponseReviewAndAT15Delta`, `TestAT_15_DeltaInstanceHTTPE2E` |
-| Answer library + delta HTTP | delta wired on create + `:delta` | AT-15 HTTP done; answer library table/UI open |
+| Answer library + delta HTTP | delta wired on create + `:delta`; `answer_library` store+HTTP | `TestQST_035_AnswerLibrary`, `TestQST_035_AnswerLibraryHTTP`; library UI still open |
 
 ## M3 — Evidence sandbox
 
@@ -60,8 +61,8 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Chunked uploads | `store/uploads.go`, `/uploads` + `:complete` | `TestEVD_ChunkedUploadCompleteQuarantine` |
-| Landlock/seccomp + Wasm PDFium | `internal/sandbox/isolation_*.go`, `opentprm sandbox` | probe/hooks tests; real Wasm PDFium still open |
-| Blob round-trip + safe viewer | `internal/blob/` Get/Put; `evidence/viewer.go` + pages API | `TestBlobRoundTrip`; `TestSanitizeViewerText*`; page stubs |
+| Landlock/seccomp + Wasm PDFium | `isolation_*.go`, `policy.go`, `extract.go`, `opentprm sandbox` | probe/hooks + TXT/JSON extract; real Wasm PDFium still open |
+| Blob round-trip + safe viewer | `viewer.go` HTML + pages `/text` `/html` APIs | `TestBlobRoundTrip`; `TestSanitizeViewerText*`; `TestRenderViewerHTMLSafe`; `TestEVD_EvidencePageHTMLViewer` |
 | SOC schemas + fuzz corpora | `api/schemas/soc-review-v1.json`; `FuzzValidateUpload` | `TestSOCReviewSchemaEmbedded`; fuzz stub present; expand corpora / CI fuzz job still open |
 
 ## M4 — Risk / contracts / ops
@@ -77,7 +78,7 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 | Retention/legal hold + backup CLI | `store/retention.go`, `internal/backup/`, `opentprm backup\|restore --verify-only` | `TestARC_002_*`, `TestARC_013_*`, AT-14 (hold-aware) |
 | Exceptions signed decisions | `store/exceptions.go` create/list/approve + SOD-2 | `TestEXC_CreateListApprove_SOD2`, HTTP path; exception UI still open |
 | Full restore write path | `opentprm restore` without `--verify-only` | still refused (verify-only only) |
-| Committee PDF / second approver on bulk | PDF pack + dual-control | still open (sensitive export step-up done; second approver open) |
+| Committee PDF / second approver on bulk | `/exports/{id}:approve` SOD + committee JSON stub | `TestRPT_004_ExportSecondApprover*`; PDF pack still open |
 
 ## M5 — OpenAPI contract
 
@@ -85,8 +86,8 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
-| Complete OpenAPI §10.2 | `api/openapi.yaml` | schema lint (expanded; full §10.2 still open) |
-| oapi-codegen stubs | generated server types | still open |
+| Complete OpenAPI §10.2 | `api/openapi.yaml` (+ answer-library, page HTML, export approve) | `TestOpenAPI_RoutesHaveMuxRegistrationSmoke`; full §10.2 still open |
+| oapi-codegen stubs | generated server types | still open (contract smoke substitutes) |
 | ETags / Idempotency / cursors | middleware + store row_version | contract tests (idempotency covered in AT-01 HTTP) |
 | Replace empty/501 handlers | `handlers_domain.go` + `store/catalog.go` | catalog paths store-backed; `/agent/call` gateway-backed |
 
@@ -114,22 +115,22 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 
 ## M8 — Listener B / portal
 
-**Done (partial):** **portal listener wiring when enabled**; **magic-link issue/consume stub**; **questionnaire list scoped by vendor_id**.
+**Done (partial):** **portal listener wiring when enabled**; **magic-link issue/consume stub**; **passkey enroll + TOTP enroll/verify stubs**; **questionnaire list scoped by vendor_id**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Portal flows | `internal/portal/`, Listener B in `ListenAndServeTLS` | `TestPortalEnabledWiresListener`, `TestPOR_*` |
-| Magic-link + passkey/TOTP | `magiclink.go` | `TestPOR_002_MagicLinkIssueConsume`; passkey/TOTP still open |
+| Magic-link + passkey/TOTP | `magiclink.go`, `mfa.go` | `TestPOR_002_MagicLinkIssueConsume`, `TestPOR_002_PasskeyEnrollStub`, `TestPOR_002_TOTPEnrollVerifyStub`; full WebAuthn attestation still open |
 | Anti-automation + DAST hardening | rate limits, headers | ZAP baseline still open |
 
 ## M9 — UI, NFR, release
 
-**Done (partial):** **analyst home + vendors + intakes + change-requests via `html/template` + `/static/app.css`**; **CycloneDX SBOM (`make sbom` + CI)**; **gosec CI step**; **SLSA provenance stub (`make provenance-stub`, `docs/build/SLSA-PROVENANCE.md`)**; **multi-arch buildx note in handbook**; **cosign verify placeholder (`scripts/cosign-verify.sh`)**.
+**Done (partial):** **analyst home + vendors + intakes + change-requests via `html/template` + `/static/app.css`**; **CycloneDX SBOM (`make sbom` + CI)**; **gosec CI step**; **SLSA provenance stub (`make provenance-stub`, `docs/build/SLSA-PROVENANCE.md`)**; **multi-arch buildx note in handbook**; **cosign verify placeholder (`scripts/cosign-verify.sh`)**; **NFR-001 ready latency smoke**.
 
 | Slice | Targets | Exit |
 | --- | --- | --- |
 | Real UI (`html/template`) | `web/templates`, `web/static` | `TestUI_AnalystHomeAndVendors`, `TestUI_IntakeAnalystQueue`, `TestAT_05_ChangeRequestApprovalUI`; more screens / screenshots still open |
-| NFR tests | load/latency budgets | NFR suite still open |
+| NFR tests | httptest `/health/ready` p95 smoke | `TestNFR_001_HealthReadyLatencySmoke`; vegeta/k6 + broader NFR still open |
 | SBOM/cosign/SLSA + handbook/threat model | CI + `docs/` | CycloneDX + gosec + provenance stub + cosign placeholder; signed attestations + TST-001–010 still open |
 
 ## Cross-cutting (always open until M9)
@@ -138,4 +139,5 @@ Ordered by security-first milestone. Each slice lists concrete file targets and 
 - Store incomplete vs migrations → close field gaps per milestone
 - `evals/` harness started (AT-04); expand fixtures and CI gate
 - Traceability: keep `docs/traceability/MUST-map.md` updated as tests land
-- oapi-codegen + full OpenAPI §10.2 still open
+- oapi-codegen + full OpenAPI §10.2 still open (mux registration smoke landed)
+- OPS-004 demo seed gated (`internal/seed`); richer demo graph still open

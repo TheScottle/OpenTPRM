@@ -47,6 +47,8 @@ func (a *App) routeAPIInner(w http.ResponseWriter, r *http.Request) {
 		a.handleQuestionnaires(w, r, ac)
 	case path == "/questionnaire-instances" || strings.HasPrefix(path, "/questionnaire-instances"):
 		a.handleQuestionnaireInstances(w, r, ac)
+	case path == "/answer-library" || strings.HasPrefix(path, "/answer-library"):
+		a.handleAnswerLibrary(w, r, ac)
 	case path == "/uploads" || strings.HasPrefix(path, "/uploads"):
 		a.handleUploads(w, r, ac)
 	case path == "/evidence" || strings.HasPrefix(path, "/evidence"):

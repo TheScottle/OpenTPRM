@@ -10,6 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	ErrExportSODSecondApprover = errors.New("RPT-004: requester cannot be second approver")
+	ErrExportNotPendingApprove = errors.New("export is not awaiting second approval")
+	ErrExportSecondRequired    = errors.New("sensitive export requires second approver")
+)
+
 // ExportRecord is an exports row (RPT-004).
 type ExportRecord struct {
 	ID              string `json:"id"`
@@ -52,6 +58,10 @@ func (s *Store) CreateExport(ctx context.Context, e ExportRecord, markings map[s
 	}
 	e.Marking = reporting.ResolveMarking(e.Classification, markings)
 	e.StepUpRequired = reporting.SensitiveClassification(e.Classification)
+	// Client-Confidential / Privileged bulk waits for second approver (RPT-004).
+	if e.StepUpRequired && e.Status == "pending" {
+		e.Status = "pending_second_approval"
+	}
 	now := nowUTC()
 	_, err := s.db.ExecContext(ctx, `INSERT INTO exports(
 		id, format, scope, classification, marking, status, requester, second_approver,
@@ -64,6 +74,40 @@ func (s *Store) CreateExport(ctx context.Context, e ExportRecord, markings map[s
 	}
 	e.CreatedAt, e.UpdatedAt = now, now
 	return e, nil
+}
+
+// ApproveExportSecond records the second approver for Client-Confidential/Privileged bulk (RPT-004).
+func (s *Store) ApproveExportSecond(ctx context.Context, id, approverID string) (ExportRecord, error) {
+	if _, err := RequireAuthz(ctx); err != nil {
+		return ExportRecord{}, err
+	}
+	if approverID == "" {
+		return ExportRecord{}, fmt.Errorf("approver required")
+	}
+	e, err := s.GetExport(ctx, id)
+	if err != nil {
+		return ExportRecord{}, err
+	}
+	if !e.StepUpRequired && e.Status != "pending_second_approval" {
+		return ExportRecord{}, ErrExportSecondRequired
+	}
+	if e.Status != "pending_second_approval" && e.Status != "pending" {
+		return ExportRecord{}, ErrExportNotPendingApprove
+	}
+	if e.Requester != "" && e.Requester == approverID {
+		return ExportRecord{}, ErrExportSODSecondApprover
+	}
+	now := nowUTC()
+	res, err := s.db.ExecContext(ctx, `UPDATE exports SET second_approver=?, status='approved', updated_at=?
+		WHERE id=? AND status IN ('pending_second_approval','pending')`, approverID, now, id)
+	if err != nil {
+		return ExportRecord{}, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ExportRecord{}, ErrExportNotPendingApprove
+	}
+	return s.GetExport(ctx, id)
 }
 
 // ListExports returns export jobs newest first.

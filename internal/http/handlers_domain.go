@@ -647,8 +647,10 @@ func (a *App) handleEvidence(w http.ResponseWriter, r *http.Request, ac authz.Co
 		return
 	}
 
-	// GET /evidence/{id}/pages/{n}/text — safe viewer stub
-	if strings.Contains(path, "/pages/") && strings.HasSuffix(path, "/text") && r.Method == http.MethodGet {
+	// GET /evidence/{id}/pages/{n}/text — safe viewer JSON stub
+	// GET /evidence/{id}/pages/{n}/html — CSP-safe HTML viewer (EVD-007)
+	if strings.Contains(path, "/pages/") && r.Method == http.MethodGet &&
+		(strings.HasSuffix(path, "/text") || strings.HasSuffix(path, "/html")) {
 		if !a.authorize(w, ac, authz.ActionEvidenceReadContent, authz.Resource{Type: "evidence", ID: "*"}) {
 			return
 		}
@@ -668,9 +670,16 @@ func (a *App) handleEvidence(w http.ResponseWriter, r *http.Request, ac authz.Co
 			writeProblem(w, 404, "not_found", "page not found")
 			return
 		}
-		writeJSON(w, 200, evidence.ViewerPageStub{
+		stub := evidence.ViewerPageStub{
 			EvidenceID: p.EvidenceID, PageNum: p.PageNum, Text: p.TextContent, TextSHA256: p.TextSHA256, Safe: true,
-		})
+		}
+		if strings.HasSuffix(path, "/html") {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(evidence.RenderViewerHTML(stub)))
+			return
+		}
+		writeJSON(w, 200, stub)
 		return
 	}
 
@@ -996,6 +1005,15 @@ func (a *App) handleReports(w http.ResponseWriter, r *http.Request, ac authz.Con
 		}
 		raw, _ := json.Marshal(map[string]any{"items": items, "type": typ})
 		body = string(raw)
+	case "committee":
+		// Committee pack stub (RPT-002): marked JSON; PDF rendering still open.
+		// Client-Confidential bulk exports still need second approver via /exports/{id}:approve.
+		raw, _ := json.Marshal(map[string]any{
+			"type": "committee", "format": "json_stub",
+			"note": "PDF pack pending; second approver required for Client-Confidential bulk exports",
+			"classification": classification,
+		})
+		body = string(raw)
 	default:
 		body = `{"type":"` + typ + `","status":"stub"}`
 	}
@@ -1004,6 +1022,28 @@ func (a *App) handleReports(w http.ResponseWriter, r *http.Request, ac authz.Con
 }
 
 func (a *App) handleExports(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+	if strings.Contains(path, ":approve") && r.Method == http.MethodPost {
+		id := extractID(r.URL.Path, "/api/v1/exports/", ":approve")
+		if !a.authorize(w, ac, authz.ActionExportBulk, authz.Resource{Type: "export", ID: id}) {
+			return
+		}
+		if !ac.StepUpFresh() {
+			writeProblem(w, 401, "step_up_required", "second approval of sensitive export requires step-up")
+			return
+		}
+		got, err := a.Store.ApproveExportSecond(r.Context(), id, ac.PrincipalID)
+		if err != nil {
+			if errors.Is(err, store.ErrExportSODSecondApprover) {
+				writeProblem(w, 403, "sod", err.Error())
+				return
+			}
+			writeProblem(w, 422, "approve_failed", err.Error())
+			return
+		}
+		writeJSON(w, 200, got)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "export", ID: "*"}) {
@@ -1041,6 +1081,44 @@ func (a *App) handleExports(w http.ResponseWriter, r *http.Request, ac authz.Con
 		got, err := a.Store.CreateExport(r.Context(), body, a.Cfg.Labels.Markings)
 		if err != nil {
 			writeProblem(w, 422, "create_failed", err.Error())
+			return
+		}
+		writeJSON(w, 201, got)
+	default:
+		writeProblem(w, 405, "method_not_allowed", "method not allowed")
+	}
+}
+
+func (a *App) handleAnswerLibrary(w http.ResponseWriter, r *http.Request, ac authz.Context) {
+	switch r.Method {
+	case http.MethodGet:
+		if !a.authorize(w, ac, authz.ActionVendorRead, authz.Resource{Type: "answer_library", ID: "*"}) {
+			return
+		}
+		vendorID := r.URL.Query().Get("vendor_id")
+		if vendorID == "" {
+			writeProblem(w, 400, "bad_request", "vendor_id required")
+			return
+		}
+		items, err := a.Store.ListAnswerLibrary(r.Context(), vendorID)
+		if err != nil {
+			writeProblem(w, 500, "error", "list failed")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	case http.MethodPost:
+		if !a.authorize(w, ac, authz.ActionVendorWrite, authz.Resource{Type: "answer_library", ID: "*"}) {
+			return
+		}
+		var body store.AnswerLibraryEntry
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeProblem(w, 400, "bad_request", "invalid json")
+			return
+		}
+		body.UpdatedBy = ac.PrincipalID
+		got, err := a.Store.UpsertAnswerLibrary(r.Context(), body)
+		if err != nil {
+			writeProblem(w, 422, "upsert_failed", err.Error())
 			return
 		}
 		writeJSON(w, 201, got)

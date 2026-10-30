@@ -27,9 +27,10 @@ func ProbeIsolation() IsolationStatus {
 
 // ApplyChildHooks applies best-effort Landlock + no_new_privs for the sandbox child.
 // Missing Landlock is degraded (not fatal). Seccomp filter remains deploy-profile based
-// so unit tests / CI without BPF privileges still pass.
+// (DeploySeccompProfile) so unit tests / CI without BPF privileges still pass.
 func ApplyChildHooks(c Constraints) (IsolationStatus, error) {
 	st := ProbeIsolation()
+	policy := ExpectedChildPolicy(c)
 	if err := setNoNewPrivs(); err != nil {
 		st.Detail = fmt.Sprintf("no_new_privs: %v", err)
 		// Non-fatal outside hardened containers.
@@ -38,6 +39,7 @@ func ApplyChildHooks(c Constraints) (IsolationStatus, error) {
 	}
 	if c.ForbidNetwork {
 		// Empty env is applied by RunConstrained; record intent here.
+		_ = policy.EmptyEnv
 	}
 	applied, err := tryLandlockRestrict(c.AllowPaths)
 	if err != nil {
@@ -50,8 +52,10 @@ func ApplyChildHooks(c Constraints) (IsolationStatus, error) {
 	if !applied {
 		st.Degraded = true
 		if st.Detail == "" {
-			st.Detail = "Landlock not applied"
+			st.Detail = "Landlock not applied; seccomp via " + policy.SeccompProfile
 		}
+	} else if st.Detail == "" {
+		st.Detail = "landlock ok; seccomp via " + policy.SeccompProfile
 	}
 	return st, nil
 }

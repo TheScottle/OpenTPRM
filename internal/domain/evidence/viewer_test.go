@@ -20,3 +20,15 @@ func TestSanitizeViewerTextStripsControlsAndTags(t *testing.T) {
 		t.Fatalf("body lost: %q", got)
 	}
 }
+
+func TestRenderViewerHTMLSafe(t *testing.T) {
+	html := evidence.RenderViewerHTML(evidence.ViewerPageStub{
+		EvidenceID: "ev-1", PageNum: 1, Text: "<script>x</script>\nline", TextSHA256: "abc", Safe: true,
+	})
+	if strings.Contains(html, "<script>") {
+		t.Fatalf("script tag leaked: %s", html)
+	}
+	if !strings.Contains(html, "OpenTPRM safe viewer") || !strings.Contains(html, "ev-1") {
+		t.Fatalf("missing chrome: %s", html)
+	}
+}

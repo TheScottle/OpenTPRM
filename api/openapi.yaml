@@ -279,6 +279,24 @@ paths:
         - $ref: "#/components/parameters/ID"
       responses:
         "200": { description: OK }
+  /answer-library:
+    get:
+      tags: [questionnaires]
+      summary: List per-vendor answer library (QST-035)
+      operationId: listAnswerLibrary
+      parameters:
+        - name: vendor_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [questionnaires]
+      summary: Upsert answer library entry
+      operationId: upsertAnswerLibrary
+      responses:
+        "201": { description: Created or updated }
   /questionnaire-instances/{id}/score:
     get:
       tags: [questionnaires]
@@ -354,6 +372,19 @@ paths:
           schema: { type: integer, minimum: 1 }
       responses:
         "200": { description: Sanitized text }
+  /evidence/{id}/pages/{page}/html:
+    get:
+      tags: [evidence]
+      summary: Safe viewer HTML page (EVD-007)
+      operationId: getEvidencePageHTML
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - name: page
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: CSP-safe HTML }
   /evidence/{id}/soc-review:
     get:
       tags: [evidence]
@@ -483,6 +514,17 @@ paths:
       responses:
         "201": { description: Created }
         "401": { description: Step-up required }
+  "/exports/{id}:approve":
+    post:
+      tags: [reports]
+      summary: Second approver for Client-Confidential/Privileged bulk (RPT-004)
+      operationId: approveExportSecond
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200": { description: Approved }
+        "401": { description: Step-up required }
+        "403": { description: SOD — requester cannot self-approve }
   /contracts:
     get:
       tags: [contracts]

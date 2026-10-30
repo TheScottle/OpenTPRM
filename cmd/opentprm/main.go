@@ -32,6 +32,7 @@ import (
 	"github.com/TheScottle/OpenTPRM/internal/ctn"
 	httpserver "github.com/TheScottle/OpenTPRM/internal/http"
 	"github.com/TheScottle/OpenTPRM/internal/sandbox"
+	"github.com/TheScottle/OpenTPRM/internal/seed"
 	"github.com/TheScottle/OpenTPRM/internal/store"
 	"github.com/TheScottle/OpenTPRM/policies"
 )
@@ -120,6 +121,11 @@ func cmdServe(log *slog.Logger, args []string) error {
 		}
 	}
 
+	// OPS-004: refuse demo org seed in production before opening store work.
+	if err := seed.AllowDemo(cfg.Mode); err != nil {
+		return err
+	}
+
 	var stStore *store.Store
 	var auditLog *audit.Logger
 	if !sealed {
@@ -129,6 +135,23 @@ func cmdServe(log *slog.Logger, args []string) error {
 		}
 		defer stStore.Close()
 		auditLog = audit.New(stStore.DB(), keyring)
+		if seed.Requested() {
+			seedCtx := authz.WithContext(context.Background(), authz.Context{
+				PrincipalID: "system", PrincipalType: authz.PrincipalWorkforce,
+				Roles: []string{"security_administrator"}, AAL: 2,
+			})
+			if err := seed.ApplyDemo(seedCtx, cfg.Mode, func(ctx context.Context, v seed.DemoVendor) error {
+				return stStore.CreateVendor(ctx, store.Vendor{
+					LegalName:   v.LegalName,
+					AliasesJSON: `["` + v.TradeName + `"]`,
+					TagsJSON:    `["demo","ops-004"]`,
+					CreatedBy:   "system", UpdatedBy: "system",
+				})
+			}); err != nil {
+				return err
+			}
+			log.Info("demo seed applied", "org", seed.DemoOrgLegalName)
+		}
 	}
 
 	policyText, err := policies.Base()
@@ -482,6 +505,20 @@ func cmdSandbox(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("sandbox ok job=%s landlock=%v degraded=%v seccomp=%d\n", *jobID, st.LandlockApplied, st.Degraded, st.SeccompMode)
+	pol := sandbox.ExpectedChildPolicy(c)
+	fmt.Printf("sandbox ok job=%s landlock=%v degraded=%v seccomp=%d profile=%s\n",
+		*jobID, st.LandlockApplied, st.Degraded, st.SeccompMode, pol.SeccompProfile)
+	// PDFium-free path: extract TXT/JSON page text inside the constrained child.
+	if *input != "" && *input != "/dev/null" {
+		if res, err := sandbox.ExtractTextFile(*input); err == nil {
+			fmt.Printf("extract media=%s pages=%d\n", res.MediaType, len(res.Pages))
+			for i, page := range res.Pages {
+				if len(page) > 120 {
+					page = page[:120] + "…"
+				}
+				fmt.Printf("page %d: %s\n", i+1, page)
+			}
+		}
+	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/TheScottle/OpenTPRM/internal/store"
 )
@@ -18,6 +19,8 @@ type QuestionnaireLister interface {
 type Server struct {
 	Enabled     bool
 	MagicLinks  *MagicLinkStore
+	Passkeys    *PasskeyStore
+	TOTP        *TOTPStore
 	Store       QuestionnaireLister
 	// VendorSessions maps session tokens to vendor IDs (stub).
 	sessions map[string]string
@@ -28,6 +31,8 @@ func NewServer(enabled bool) *Server {
 	return &Server{
 		Enabled:    enabled,
 		MagicLinks: NewMagicLinkStore(0),
+		Passkeys:   NewPasskeyStore(),
+		TOTP:       NewTOTPStore(),
 		sessions:   map[string]string{},
 	}
 }
@@ -35,6 +40,12 @@ func NewServer(enabled bool) *Server {
 func (s *Server) Handler() http.Handler {
 	if s.MagicLinks == nil {
 		s.MagicLinks = NewMagicLinkStore(0)
+	}
+	if s.Passkeys == nil {
+		s.Passkeys = NewPasskeyStore()
+	}
+	if s.TOTP == nil {
+		s.TOTP = NewTOTPStore()
 	}
 	if s.sessions == nil {
 		s.sessions = map[string]string{}
@@ -44,6 +55,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/portal/", s.wrap(s.handlePortal))
 	mux.HandleFunc("/portal/login", s.wrap(s.handleLogin))
 	mux.HandleFunc("/portal/magic", s.wrap(s.handleMagicConsume))
+	mux.HandleFunc("/portal/passkey/enroll", s.wrap(s.handlePasskeyEnroll))
+	mux.HandleFunc("/portal/totp/enroll", s.wrap(s.handleTOTPEnroll))
+	mux.HandleFunc("/portal/totp/verify", s.wrap(s.handleTOTPVerify))
 	mux.HandleFunc("/portal/questionnaires", s.wrap(s.handleQuestionnaires))
 	mux.HandleFunc("/api/v1/", s.wrap(s.refuseInternalAPI))
 	return mux
@@ -153,6 +167,73 @@ func (s *Server) handleQuestionnaires(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"vendor_id": vendorID, "items": items})
+}
+
+func (s *Server) handlePasskeyEnroll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_ = r.ParseForm()
+	vendorID := strings.TrimSpace(r.FormValue("vendor_id"))
+	email := strings.TrimSpace(r.FormValue("email"))
+	pub := strings.TrimSpace(r.FormValue("public_key"))
+	if vendorID == "" {
+		vendorID = s.vendorFromRequest(r)
+	}
+	cred, err := s.Passkeys.Enroll(vendorID, email, pub)
+	if err != nil {
+		http.Error(w, "invalid enrollment", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, 201, map[string]any{
+		"status": "passkey_enrolled", "credential_id": cred.ID, "vendor_id": cred.VendorID, "email": cred.Email,
+	})
+}
+
+func (s *Server) handleTOTPEnroll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_ = r.ParseForm()
+	vendorID := strings.TrimSpace(r.FormValue("vendor_id"))
+	email := strings.TrimSpace(r.FormValue("email"))
+	if vendorID == "" {
+		vendorID = s.vendorFromRequest(r)
+	}
+	en, err := s.TOTP.Enroll(vendorID, email)
+	if err != nil {
+		http.Error(w, "invalid enrollment", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, 201, map[string]any{
+		"status": "totp_enrolled", "vendor_id": en.VendorID, "email": en.Email, "secret": en.Secret,
+		"hint": "verify via POST /portal/totp/verify",
+	})
+}
+
+func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_ = r.ParseForm()
+	vendorID := strings.TrimSpace(r.FormValue("vendor_id"))
+	email := strings.TrimSpace(r.FormValue("email"))
+	code := strings.TrimSpace(r.FormValue("code"))
+	if vendorID == "" {
+		vendorID = s.vendorFromRequest(r)
+	}
+	if err := s.TOTP.Verify(vendorID, email, code, time.Now().UTC()); err != nil {
+		status := http.StatusUnauthorized
+		if err == ErrTOTPNotEnrolled {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "totp_ok", "vendor_id": vendorID, "email": email})
 }
 
 // refuseInternalAPI ensures internal workforce routes are not served on Listener B.

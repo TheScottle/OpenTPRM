@@ -92,8 +92,35 @@ func TestRPT_ExportMarkingsGEN012(t *testing.T) {
 	if !exp.StepUpRequired || !reporting.SensitiveClassification(exp.Classification) {
 		t.Fatal("privileged export must require step-up")
 	}
+	if exp.Status != "pending_second_approval" {
+		t.Fatalf("sensitive export status: %s", exp.Status)
+	}
 	list, err := st.ListExports(ctx)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("list exports: %v", err)
+	}
+}
+
+func TestRPT_004_ExportSecondApproverSOD(t *testing.T) {
+	st, ctx := testStore(t)
+	exp, err := st.CreateExport(ctx, store.ExportRecord{
+		Format: "json", Scope: "bulk", Classification: "Client-Confidential", Requester: "analyst1",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ApproveExportSecond(ctx, exp.ID, "analyst1"); err != store.ErrExportSODSecondApprover {
+		t.Fatalf("SOD: got %v", err)
+	}
+	approverCtx := authz.WithContext(ctx, authz.Context{
+		PrincipalID: "approver1", PrincipalType: authz.PrincipalWorkforce,
+		Roles: []string{"approver"}, AAL: 2,
+	})
+	approved, err := st.ApproveExportSecond(approverCtx, exp.ID, "approver1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Status != "approved" || approved.SecondApprover != "approver1" {
+		t.Fatalf("approve: %+v", approved)
 	}
 }

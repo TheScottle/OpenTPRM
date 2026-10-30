@@ -15,9 +15,15 @@
 | QST-011 | `TestQST_011_ArchiveBombRejected`, `TestQST_011_XLSXMacroPathRefused`, `TestEVD_UploadRejectsArchiveBomb` |
 | AT-08 | `TestAT_08_ArchiveBombRejectedAtValidation`, `TestEVD_UploadRejectsArchiveBomb` |
 | EVD chunked upload | `TestEVD_ChunkedUploadCompleteQuarantine`, `TestBlobRoundTrip` |
-| EVD-007 safe viewer | `TestSanitizeViewerTextStripsControlsAndTags`, `TestEVD_EvidencePageAndSOCReview` |
+| EVD-007 safe viewer | `TestSanitizeViewerTextStripsControlsAndTags`, `TestRenderViewerHTMLSafe`, `TestEVD_EvidencePageAndSOCReview`, `TestEVD_EvidencePageHTMLViewer` |
 | EVD-020 SOC schema | `TestSOCReviewSchemaEmbedded`, `TestEVD_EvidencePageAndSOCReview` |
-| SEC-UP sandbox | `TestSandboxValidateJobAllowList`, `TestSandboxForbidNetworkEnv`, `TestSandboxProbeIsolation`, `TestSandboxApplyChildHooks*` |
+| SEC-UP sandbox | `TestSandboxValidateJobAllowList`, `TestSandboxForbidNetworkEnv`, `TestSandboxProbeIsolation`, `TestSandboxApplyChildHooks*`, `TestSandboxExtractTXTAndJSON`, `TestSandboxExpectedChildPolicy` |
+| QST-035 answer library | `TestQST_035_AnswerLibrary`, `TestQST_035_AnswerLibraryHTTP` |
+| RPT-004 second approver | `TestRPT_004_ExportSecondApproverSOD`, `TestRPT_004_ExportSecondApproverHTTP` |
+| POR-002 passkey/TOTP | `TestPOR_002_PasskeyEnrollStub`, `TestPOR_002_TOTPEnrollVerifyStub` |
+| OPS-004 | `TestOPS_004_DemoSeedRefusedInProduction`, `TestOPS_004_DemoNotRequested` |
+| NFR-001 ready latency smoke | `TestNFR_001_HealthReadyLatencySmoke` |
+| OpenAPI mux contract | `TestOpenAPI_RoutesHaveMuxRegistrationSmoke` |
 | SEC-UP-002 fuzz | `FuzzValidateUpload` (+ `testdata/fuzz/ValidateUpload`) |
 | FND-002 / FND-003 / FND-005 | `TestFND_002_StatusTransitions`, `TestFND_003_DefaultSLA`, `TestFND_RSK_RemediationAndRegister` |
 | RSK-001 / RSK-003 | `TestFND_RSK_RemediationAndRegister` |
