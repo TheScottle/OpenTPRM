@@ -99,7 +99,8 @@ func (a *App) handleReady(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_, _ = w.Write([]byte(`{"status":"ready"}`))
+	// csrf_origin marks the Sec-Fetch-Site trust policy so operators can confirm image freshness.
+	_, _ = w.Write([]byte(`{"status":"ready","csrf_origin":"sfs-trust-v3"}`))
 }
 
 func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
@@ -124,9 +125,22 @@ func (a *App) middleware(next http.HandlerFunc) http.HandlerFunc {
 
 		// CSRF + Origin checks on state-changing methods (SEC-WEB / SEC-AZ-001).
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			// Allow browser Origin against request Host and configured public_base_url (Unraid LAN URL).
-			if authn.CheckOriginRejectsCrossSite(r, a.originAllowedHosts(r)...) {
-				writeProblem(w, http.StatusForbidden, "csrf", "cross-site request rejected")
+			res := authn.EvaluateOrigin(r, a.originAllowedHosts(r)...)
+			if res.Reject {
+				detail := "cross-site request rejected"
+				if res.Reason != "" {
+					detail = detail + " (" + res.Reason + ")"
+				}
+				// Always include enough to diagnose Docker/local Host vs Origin mismatches.
+				if res.Detail != "" {
+					detail = detail + ": " + res.Detail
+				}
+				if a.Log != nil {
+					a.Log.Warn("csrf origin rejected",
+						"reason", res.Reason, "host", r.Host, "origin", r.Header.Get("Origin"),
+						"sec_fetch_site", r.Header.Get("Sec-Fetch-Site"), "path", r.URL.Path)
+				}
+				writeProblem(w, http.StatusForbidden, "csrf", detail)
 				return
 			}
 		}

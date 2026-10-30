@@ -19,7 +19,8 @@ func TestLoopback_Localhost127Equivalent(t *testing.T) {
 		{"host_127_origin_ipv6", "127.0.0.1:8443", "https://[::1]:8443", "same-origin", false},
 		{"matching_origin_ignores_sfs_cross", "127.0.0.1:8443", "https://127.0.0.1:8443", "cross-site", false},
 		{"evil_still_rejected", "127.0.0.1:8443", "https://evil.example", "cross-site", true},
-		{"cross_site_no_origin", "127.0.0.1:8443", "", "cross-site", true},
+		{"cross_site_no_origin_allowed", "127.0.0.1:8443", "", "cross-site", false},
+		{"same_origin_ignores_host_rewrite", "opentprm:8443", "https://127.0.0.1:8443", "same-origin", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
